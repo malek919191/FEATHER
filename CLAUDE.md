@@ -74,11 +74,13 @@ Every change to this app ships as a GitHub commit, and the commit history **is**
 
 1. **The commit message is how a version is found again — never "Update index.html".** There are no git tags in this project, and none are wanted: the message alone carries the whole index, so it has to earn that on its own.
 
-   **A commit that bumps the version must open with the number,** followed by an em dash and the changes a user would notice, named in the words that user would use:
+   **A commit that bumps the version must open with the number,** followed by an em dash and the changes as they appear on screen:
 
    ```
    v1.0 — custom size fields, crop delete button, reset button
    ```
+
+   Messages are written in English. What matters is the register, not the language: name controls and behaviour the user can see, never the functions behind them. `v1.3 — wider tilt range, level button, and sharpness control` describes the screen; `v1.3 — refactor cropAndOrient, add cropTilted branch` names internals the user has never seen and cannot search for. Keep function names for the body, where they belong.
 
    That first line is what makes `git log --grep="^v1\.2"` land on the release in one step, so the version must lead it and never sit mid-sentence. List the actual changes, not a category: "free tilt in the cropper, sharpening and PNG-8 removed" is findable a year later; "various improvements", "several fixes" and "update cropper" are not, and are not acceptable. If a change is invisible to the user, say what it is instead of dressing it up.
 
