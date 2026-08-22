@@ -46,6 +46,7 @@ Each image is processed independently and asynchronously, guarded by a `token` c
 1. **PATCH branches off the current version, not the next one.** A cosmetic fix on `v2.7` becomes `v2.7.1` — **not** `v2.8.1`.
 2. **When MINOR increments, PATCH is dropped entirely rather than zeroed.** `v2.7.2` → `v2.8` — **never** write `v2.8.0`.
 3. **When MAJOR increments, MINOR resets to zero and PATCH is dropped:** `v2.8.3` → `v3.0`.
+4. **Changes that do not touch the app get no version at all.** Documentation (`CLAUDE.md`, `README.md`), commit messages, and code comments change nothing the user can see or use — the number in the app header tracks the app, not the repository.
 
 **Example progression:**
 
@@ -59,6 +60,35 @@ v2.7  →  cosmetic tweak       →  v2.7.1
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
 The current version in `index.html` is **`v1.1`**.
+
+## Git workflow and release history
+
+Every change to this app ships as a GitHub commit, and the commit history **is** the backup — nothing is archived separately, and any past version can be viewed or restored from the log at any time. Keep that discipline.
+
+**Working mode:** a local clone, committed and pushed with `git` directly.
+
+**Note on history:** this repository is the project's current home. Versions `v0.0` through `v1.1` were developed in `malek919191/Featherweight`, which remains as the archive of that earlier history — which is why the log here is short.
+
+1. **Write a real commit message — never "Update index.html".** State what actually changed, and lead with the version when one is released:
+   `v1.0 — custom size fields, crop delete button, reset button`
+   Earlier history is largely unlabeled; this is the single biggest gap, and it must not continue.
+2. **Tag released versions.** When you bump the number in `index.html`, say so explicitly in the commit message and add a matching git tag (`v1.0`, `v1.1`, …), so a released version can be found without scrolling the log.
+3. **Never force-push, and never rewrite history.** History is linear and additive, always — including experiments that were later reverted. Every version must stay retrievable forever.
+4. **Use commit boundaries.** Split logically separate work into separate commits ("refactor crop math", then "add reset button") rather than one large bundle, so a regression can be traced to a single commit.
+5. **Rolling back** means `git revert` (preferred — it keeps history intact), or committing the old file content forward as a new commit. Never delete or rewrite the commits in between.
+
+### How changes get verified
+
+**The user does not read code.** Verification happens one way only: he opens the live site in Safari on an iPhone once the commit has landed and GitHub Pages has redeployed (roughly 30–60 seconds), and his only diagnostic tool is a screenshot of what he sees on screen.
+
+Live site: `https://malek919191.github.io/FEATHER/`
+
+This has hard consequences for every change shipped:
+
+- **Never report a change as verified because the code looks correct.** It is verified when he sees it working on the phone — say what is committed, then hand him the check to run.
+- **Say plainly what to look for and what to tap.** Name the exact control, where it sits on screen, and what should happen. For example: "tap the pencil icon at the top-right of any photo, rotate once, and the preview beneath it should turn sideways."
+- **When a change is invisible** (documentation, refactoring with no behavioural change), say so explicitly instead of sending him to test something he cannot see.
+- **When he reports a break with a screenshot**, read what is actually on screen before theorising, and explain the cause in plain language before proposing a fix.
 
 ## Strict rules for making changes
 
