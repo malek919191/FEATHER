@@ -114,10 +114,11 @@
     transform:scale(2);transform-origin:50% 50%}
   .stub .shot.peeking img.peek{display:block}
   .stub .shot.peeking .editBtn{opacity:0}
-  .peekTag{position:absolute;top:10px;right:10px;z-index:3;display:none;
-    font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;
-    color:var(--stamp);background:rgba(253,252,248,.94);border:1.5px solid var(--stamp);
-    border-radius:6px;padding:3px 8px;transform:rotate(-6deg);pointer-events:none}
+  /* the same tag the compare viewer puts on its original, so the word reads alike in both places */
+  .peekTag{position:absolute;top:10px;right:12px;z-index:3;display:none;
+    font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    background:rgba(10,16,22,.62);color:#FFFFFF;padding:3px 8px;border-radius:6px;
+    pointer-events:none}
   .stub .shot.peeking .peekTag{display:block}
   .editBtn{position:absolute;top:10px;right:10px;width:38px;height:38px;
     border:none;border-radius:11px;background:rgba(10,16,22,.58);cursor:pointer;
@@ -253,7 +254,7 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.6</span>
+      <span class="ver">v1.6.1</span>
       <button class="refresh" id="reload" type="button">↻ Update</button>
     </span>
   </header>
@@ -938,7 +939,7 @@
         '<div class="dim"></div>' +
       '</div>' +
       '<div class="shot">' + editIcon() + '<img alt="">' +
-        '<img class="peek" alt=""><span class="peekTag">ORIGINAL</span></div>';
+        '<img class="peek" alt=""><span class="peekTag">Original</span></div>';
 
     el.querySelector(".name").textContent = original.name;
     fillStub(el, file, original, r);
