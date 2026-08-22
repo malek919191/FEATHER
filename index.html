@@ -259,7 +259,7 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.6.4</span>
+      <span class="ver">v1.6.5</span>
       <button class="refresh" id="reload" type="button">↻ Update</button>
     </span>
   </header>
@@ -1248,6 +1248,8 @@
     cFH = e ? !!e.fh : false;
     cFV = e ? !!e.fv : false;
     cFree = e ? (e.free || 0) : 0;
+    ratioVal = e ? (e.ratio || 0) : 0;
+    setRatioButtons(ratioVal);
     $("flipH").setAttribute("aria-pressed", cFH ? "true" : "false");
     $("flipV").setAttribute("aria-pressed", cFV ? "true" : "false");
     $("tilt").value = cFree;
@@ -1461,7 +1463,7 @@
 
     var whole = (sx === 0 && sy === 0 && sw === oW && sh === oH);
     if (whole && cRot === 0 && !cFH && !cFV && !cFree) edits[cropIdx] = null;
-    else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree };
+    else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree, ratio: ratioVal };
 
     closeEditor();
     rerender();
