@@ -44,7 +44,7 @@
     letter-spacing:.08em;margin-top:3px;opacity:.75}
   .label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
     text-transform:uppercase;margin-bottom:7px}
-  .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:18px}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:18px}
   .row5{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
   .row6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}
   .opt{appearance:none;-webkit-appearance:none;background:#FDFCF8;cursor:pointer;
@@ -154,6 +154,15 @@
   #cropBox{position:relative;touch-action:none;line-height:0}
   #cropCanvas{display:block;border-radius:8px}
   #cropSize{font-family:var(--mono);font-size:13px;font-weight:650;color:#DCE6EE;letter-spacing:.06em}
+  .tilt{-webkit-appearance:none;appearance:none;width:100%;max-width:300px;
+    height:26px;margin:0;background:transparent;cursor:pointer}
+  .tilt::-webkit-slider-runnable-track{height:2px;background:#46586A;border-radius:2px}
+  .tilt::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:22px;height:22px;margin-top:-10px;border-radius:50%;background:#FFFFFF;
+    box-shadow:0 1px 3px rgba(10,16,22,.6)}
+  .tilt::-moz-range-track{height:2px;background:#46586A;border-radius:2px}
+  .tilt::-moz-range-thumb{width:22px;height:22px;border:none;border-radius:50%;
+    background:#FFFFFF;box-shadow:0 1px 3px rgba(10,16,22,.6)}
   #shade{position:absolute;inset:0;pointer-events:none}
   #shade .dim{position:absolute;background:rgba(10,16,22,.62)}
   #frame{position:absolute;border:1.5px solid #FFFFFF;touch-action:none;cursor:move}
@@ -199,16 +208,15 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.1</span>
+      <span class="ver">v1.2</span>
     </span>
   </header>
 
   <div class="label">Format</div>
-  <div class="row4" id="formats">
+  <div class="row3" id="formats">
     <button class="opt" data-f="src" aria-pressed="true">Source<small>orig</small></button>
     <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG<small>lossy</small></button>
     <button class="opt" data-f="image/png" aria-pressed="false">PNG<small>lossless</small></button>
-    <button class="opt" data-f="png8" aria-pressed="false">PNG-8<small>64 col</small></button>
   </div>
 
   <div class="label">Longest side</div>
@@ -293,6 +301,7 @@
       </div>
     </div>
     <div id="cropSize"></div>
+    <input id="tilt" class="tilt" type="range" min="-45" max="45" step="1" value="0" aria-label="Tilt">
   </div>
   <div class="cropBar">
     <div class="ratios" id="ratios">
@@ -320,8 +329,6 @@
 (function(){
   "use strict";
 
-  var SHARPEN = 0.42;
-  var PALETTE = 64;
   var CANVAS_CAP = 16000000;
 
   var format = "src", targetW = null, quality = null;
@@ -415,11 +422,10 @@
   }
   function outMime(file){
     if (format === "src") return file.type === "image/png" ? "image/png" : "image/jpeg";
-    if (format === "png8") return "image/png";
     return format;
   }
   function lossless(){
-    if (format === "image/png" || format === "png8") return true;
+    if (format === "image/png") return true;
     if (format !== "src" || !sourceFiles.length) return false;
     for (var i = 0; i < sourceFiles.length; i++){
       if (sourceFiles[i].type !== "image/png") return false;
@@ -534,6 +540,39 @@
     return (rot % 180 === 0) ? { w: bw, h: bh } : { w: bh, h: bw };
   }
 
+  /* how far a w*h box must grow so that, tilted by deg, it still covers itself */
+  function coverScale(w, h, deg){
+    var t = deg * Math.PI / 180;
+    var c = Math.abs(Math.cos(t)), s = Math.abs(Math.sin(t));
+    return Math.max((w * c + h * s) / w, (w * s + h * c) / h);
+  }
+
+  /* free tilt cannot use a source rect, so it redraws the whole transform
+     and lifts the crop straight out of it */
+  function cropTilted(bmp, bw, bh, edit){
+    var o = orientedSize(bw, bh, edit.rot || 0);
+    var sw = Math.max(1, edit.sw), sh = Math.max(1, edit.sh);
+
+    var k = 1;
+    if (sw * sh > CANVAS_CAP) k = Math.sqrt(CANVAS_CAP / (sw * sh));
+    var pw = Math.max(1, Math.round(sw * k));
+    var ph = Math.max(1, Math.round(sh * k));
+
+    var cv = coverScale(o.w, o.h, edit.free);
+    var out = canvasOf(pw, ph);
+    var x = out.getContext("2d");
+    x.scale(k, k);
+    x.translate(-edit.sx, -edit.sy);
+    x.translate(o.w / 2, o.h / 2);
+    x.rotate(edit.free * Math.PI / 180);
+    x.scale(cv, cv);
+    x.rotate((edit.rot || 0) * Math.PI / 180);
+    x.scale(edit.fh ? -1 : 1, edit.fv ? -1 : 1);
+    x.drawImage(bmp, -bw / 2, -bh / 2, bw, bh);
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    return { src: out, w: pw, h: ph, temp: out };
+  }
+
   function toSourceRect(bw, bh, edit){
     var rot = edit.rot || 0;
     var sw = edit.sw, sh = edit.sh;
@@ -552,6 +591,8 @@
   }
 
   function cropAndOrient(bmp, bw, bh, edit){
+    if (edit.free) return cropTilted(bmp, bw, bh, edit);
+
     var r = toSourceRect(bw, bh, edit);
     r.x = Math.max(0, Math.min(r.x, bw - 1));
     r.y = Math.max(0, Math.min(r.y, bh - 1));
@@ -603,86 +644,7 @@
     return out;
   }
 
-  function sharpen(ctx, w, h, amt){
-    if (w < 3 || h < 3) return;
-    var d = ctx.getImageData(0, 0, w, h), px = d.data;
-    var src = new Uint8ClampedArray(px);
-    var c = 1 + 4 * amt, x, y, k, i, o;
-    for (y = 1; y < h - 1; y++){
-      for (x = 1; x < w - 1; x++){
-        i = (y * w + x) * 4;
-        for (k = 0; k < 3; k++){
-          o = src[i+k] * c
-            - amt * (src[i - 4 + k] + src[i + 4 + k] + src[i - w*4 + k] + src[i + w*4 + k]);
-          px[i+k] = o;
-        }
-      }
-    }
-    ctx.putImageData(d, 0, 0);
-  }
-
-  function quantize(ctx, w, h, colors){
-    var d = ctx.getImageData(0, 0, w, h), px = d.data, i, p;
-    var pixels = [];
-    for (i = 0; i < px.length; i += 4) pixels.push([px[i], px[i+1], px[i+2]]);
-    var boxes = [pixels];
-
-    function widest(box){
-      var mn = [255,255,255], mx = [0,0,0], j, k;
-      for (j = 0; j < box.length; j++){
-        for (k = 0; k < 3; k++){
-          if (box[j][k] < mn[k]) mn[k] = box[j][k];
-          if (box[j][k] > mx[k]) mx[k] = box[j][k];
-        }
-      }
-      var best = 0, span = -1;
-      for (k = 0; k < 3; k++) if (mx[k] - mn[k] > span){ span = mx[k] - mn[k]; best = k; }
-      return { ch: best, span: span };
-    }
-
-    while (boxes.length < colors){
-      var target = -1, bestSpan = -1, ch = 0, j;
-      for (j = 0; j < boxes.length; j++){
-        if (boxes[j].length < 2) continue;
-        var wc = widest(boxes[j]);
-        if (wc.span > bestSpan){ bestSpan = wc.span; target = j; ch = wc.ch; }
-      }
-      if (target < 0 || bestSpan <= 0) break;
-      var box = boxes[target];
-      box.sort(function(a, b){ return a[ch] - b[ch]; });
-      var mid = box.length >> 1;
-      boxes.splice(target, 1, box.slice(0, mid), box.slice(mid));
-    }
-
-    var pal = [];
-    for (i = 0; i < boxes.length; i++){
-      var b = boxes[i];
-      if (!b.length) continue;
-      var r = 0, g = 0, bl = 0, n = b.length;
-      for (var j2 = 0; j2 < n; j2++){ r += b[j2][0]; g += b[j2][1]; bl += b[j2][2]; }
-      pal.push([Math.round(r/n), Math.round(g/n), Math.round(bl/n)]);
-    }
-    if (!pal.length) return;
-
-    var cache = {};
-    for (i = 0; i < px.length; i += 4){
-      var key = (px[i] >> 2) * 4096 + (px[i+1] >> 2) * 64 + (px[i+2] >> 2);
-      var hit = cache[key];
-      if (hit === undefined){
-        var bestD = Infinity, bestI = 0;
-        for (p = 0; p < pal.length; p++){
-          var dr = px[i] - pal[p][0], dg = px[i+1] - pal[p][1], db = px[i+2] - pal[p][2];
-          var dist = dr*dr + dg*dg + db*db;
-          if (dist < bestD){ bestD = dist; bestI = p; }
-        }
-        hit = bestI; cache[key] = hit;
-      }
-      px[i] = pal[hit][0]; px[i+1] = pal[hit][1]; px[i+2] = pal[hit][2];
-    }
-    ctx.putImageData(d, 0, 0);
-  }
-
-  async function process(file, edit, longest, q, mime, indexed){
+  async function process(file, edit, longest, q, mime){
     var bmp = await decode(file);
     var d0 = dimsOf(bmp);
     var e = buildEdited(bmp, d0.w, d0.h, edit);
@@ -701,10 +663,6 @@
     var canvas = stepDown(e.src, ow, oh, w, h);
     release(bmp);
     if (e.temp) kill(e.temp);
-
-    var ctx = canvas.getContext("2d");
-    if (w < ow) sharpen(ctx, w, h, SHARPEN);
-    if (indexed) quantize(ctx, w, h, PALETTE);
 
     var blob = await toBlob(canvas, mime, q);
     kill(canvas);
@@ -788,7 +746,6 @@
     shBtn.disabled = true;
 
     var base = tag(), tOld = 0, tNew = 0, i;
-    var indexed = (format === "png8");
     var longest = longestTarget();
 
     for (i = 0; i < sourceFiles.length; i++){
@@ -799,7 +756,7 @@
       try {
         var mime = outMime(f);
         var q = quality === null ? 0.75 : quality;
-        var r = await process(f, edits[i], longest, q, mime, indexed);
+        var r = await process(f, edits[i], longest, q, mime);
         if (mine !== token) break;
         var out = new File([r.blob], "fw-" + base + "-" + (i+1) + "." + extOf(mime), { type: mime });
         results.push(out);
@@ -914,7 +871,7 @@
   var cropper = $("cropper"), cropCanvas = $("cropCanvas"), cropBox = $("cropBox"),
       frame = $("frame"), cropSize = $("cropSize"), ratioVal = 0, cropIdx = -1;
   var cBmp = null, bw0 = 0, bh0 = 0;
-  var cRot = 0, cFH = false, cFV = false;
+  var cRot = 0, cFH = false, cFV = false, cFree = 0;
   var oW = 0, oH = 0, viewK = 1, dispW = 0, dispH = 0;
   var fx = 0, fy = 0, fw = 0, fh = 0;
 
@@ -962,8 +919,10 @@
     cRot = e ? (e.rot || 0) : 0;
     cFH = e ? !!e.fh : false;
     cFV = e ? !!e.fv : false;
+    cFree = e ? (e.free || 0) : 0;
     $("flipH").setAttribute("aria-pressed", cFH ? "true" : "false");
     $("flipV").setAttribute("aria-pressed", cFV ? "true" : "false");
+    $("tilt").value = cFree;
 
     try { cBmp = await decode(sourceFiles[idx]); }
     catch (err){ setStatus("Could not open that image.", true); return; }
@@ -1007,6 +966,11 @@
     if (x.imageSmoothingQuality) x.imageSmoothingQuality = "high";
     x.fillStyle = "#fff"; x.fillRect(0, 0, pw, ph);
     x.translate(pw / 2, ph / 2);
+    if (cFree){
+      var cv = coverScale(oW, oH, cFree);
+      x.rotate(cFree * Math.PI / 180);
+      x.scale(cv, cv);
+    }
     x.rotate(cRot * Math.PI / 180);
     x.scale(cFH ? -1 : 1, cFV ? -1 : 1);
     x.drawImage(cBmp, -iw / 2, -ih / 2, iw, ih);
@@ -1064,10 +1028,16 @@
     paintEditor(); layoutFrame();
   });
 
+  $("tilt").addEventListener("input", function(){
+    cFree = parseFloat(this.value) || 0;
+    paintEditor(); layoutFrame();
+  });
+
   $("cropReset").addEventListener("click", function(){
-    cRot = 0; cFH = false; cFV = false; ratioVal = 0;
+    cRot = 0; cFH = false; cFV = false; cFree = 0; ratioVal = 0;
     $("flipH").setAttribute("aria-pressed", "false");
     $("flipV").setAttribute("aria-pressed", "false");
+    $("tilt").value = 0;
     setRatioButtons(0);
     paintEditor(); resetFrame(); layoutFrame();
   });
@@ -1155,8 +1125,8 @@
     sh = Math.max(1, Math.min(sh, oH - sy));
 
     var whole = (sx === 0 && sy === 0 && sw === oW && sh === oH);
-    if (whole && cRot === 0 && !cFH && !cFV) edits[cropIdx] = null;
-    else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV };
+    if (whole && cRot === 0 && !cFH && !cFV && !cFree) edits[cropIdx] = null;
+    else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree };
 
     closeEditor();
     rerender();
