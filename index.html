@@ -42,6 +42,12 @@
     letter-spacing:.08em;text-transform:uppercase}
   .ver{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-soft);
     letter-spacing:.08em;margin-top:3px;opacity:.75}
+  .refresh{appearance:none;-webkit-appearance:none;cursor:pointer;
+    display:inline-block;margin-top:7px;background:#FDFCF8;color:var(--ink-soft);
+    border:1px solid var(--rule);border-radius:9px;padding:3px 8px 4px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;line-height:1.2;
+    text-transform:uppercase;transition:background .15s,border-color .15s,color .15s}
+  .refresh:active{background:#16212B;border-color:#16212B;color:#FFFFFF}
   .label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
     text-transform:uppercase;margin-bottom:7px}
   .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:18px}
@@ -234,7 +240,8 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.3</span>
+      <span class="ver">v1.4</span>
+      <button class="refresh" id="reload" type="button">↻ Update</button>
     </span>
   </header>
 
@@ -390,6 +397,16 @@
       handle = $("handle"), imgOld = $("imgOld"), imgNew = $("imgNew"),
       levelsRow = $("levels"), qLabel = $("qLabel"),
       customRow = $("customRow"), cwEl = $("cw"), chEl = $("ch");
+
+  /* On the home screen iOS freezes the app instead of closing it, so a new
+     version is never requested; a plain reload can also come straight back
+     from cache. Loading an address the phone has never seen forces a real
+     download, which is the only thing that reliably brings the update in. */
+  $("reload").addEventListener("click", function(){
+    if (sourceFiles.length &&
+        !confirm("Updating reloads the app and clears the photos you picked. Continue?")) return;
+    location.replace(location.href.replace(/[?#].*$/, "") + "?u=" + Date.now());
+  });
 
   function bind(containerId, cb){
     var btns = $(containerId).querySelectorAll(".opt");
