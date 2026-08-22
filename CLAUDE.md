@@ -1,0 +1,45 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## نظرة عامة على التطبيق
+
+**FEATHER (Featherweight)** هو أداة ضغط وتحرير صور تعمل بالكامل داخل المتصفح (on-device)، مبنية كملف واحد فقط: `index.html`. لا يوجد أي backend، لا يوجد استدعاء شبكة، ولا ترفع أي صورة لأي سيرفر — كل المعالجة تتم محليًا عبر Canvas API و JavaScript الأصلي (vanilla).
+
+التطبيق مصمم كـ mini PWA على الموبايل (خصوصًا iOS، بدليل meta tags مثل `apple-mobile-web-app-capable` و `viewport-fit=cover` و التعامل مع `env(safe-area-inset-*)`).
+
+### وظائف التطبيق (كلها داخل `index.html`)
+
+1. **اختيار صور متعددة** عبر `<input type="file" multiple accept="image/*">`.
+2. **اختيار صيغة الإخراج**: Source (نفس الصيغة الأصلية)، JPEG، PNG، أو PNG-8 (256→64 لون عبر median-cut quantization مخصص).
+3. **اختيار أبعاد الإخراج**: أبعاد جاهزة (900/700/500/350px لأطول ضلع) أو أبعاد مخصصة (Custom W/H) مع حفظ نسبة العرض للطول (aspect ratio) تلقائيًا.
+4. **اختيار جودة الضغط** (Quality slider من 30% إلى 90%) — يتم تعطيلها تلقائيًا إذا كانت الصيغة lossless (PNG).
+5. **محرر صور (cropper) مدمج**: قص (crop) بنسب جاهزة أو حر، تدوير 90°، Flip أفقي/عمودي، مع شبكة تسعة أقسام (rule-of-thirds grid) ومقابض (grips) قابلة للسحب على اللمس والماوس.
+6. **معاينة "قبل/بعد" (compare viewer)**: شريحة سحب (slider) لمقارنة الصورة الأصلية بالمضغوطة مع عرض الأبعاد والحجم بالبايت لكل نسخة.
+7. **مشاركة النتائج** عبر `navigator.share` (Web Share API) — يفتح share sheet في iOS ليحفظ المستخدم الصور في Photos أو Files.
+
+### خط المعالجة التقني (pipeline)
+
+`decode()` (باستخدام `createImageBitmap` مع fallback لـ `<img>`) → `cropAndOrient()` (يطبق القص + الدوران + الـ flip بحساب هندسي دقيق لتحويل الإحداثيات) → `stepDown()` (تصغير تدريجي خطوة بخطوة x2 لتفادي aliasing بدل تصغير مباشر) → `sharpen()` (unsharp mask بسيط عبر convolution يدوي على `ImageData`) → `quantize()` (فقط لصيغة PNG-8، عبر median-cut الشخصي) → `toBlob()` للترميز النهائي.
+
+كل صورة تُعالج بشكل مستقل و async، مع نظام `token` counter لإلغاء أي معالجة قديمة إذا غيّر المستخدم الإعدادات أثناء المعالجة (race condition guard).
+
+## البنية والتطوير
+
+- **لا يوجد build step، لا يوجد package manager، لا dependencies خارجية.** الملف الوحيد `index.html` يحوي كل شيء: HTML + CSS (في `<style>`) + JS (في `<script>` واحد، IIFE بصيغة `"use strict"`).
+- **لا يوجد test suite ولا linter مهيأ في المشروع.**
+- **للتشغيل/المعاينة**: افتح `index.html` مباشرة في المتصفح (أو أي static server بسيط، مثل `python3 -m http.server`). لا أوامر build أو npm scripts لأنه لا يوجد `package.json`.
+- الأسلوب البرمجي المستخدم في الملف: JavaScript بصياغة ES5 تقريبًا (`var`، دوال `function` تقليدية، بدون `class` أو arrow functions أو async/await حديث إلا في نقاط محدودة)، بدون أي framework.
+
+## قواعد صارمة عند التعديل
+
+1. **يمنع منعًا باتًا إرسال أي صورة أو بيانات المستخدم إلى أي سيرفر أو API خارجي.** الخاصية الأساسية للتطبيق هي "Nothing leaves your phone" (مكتوبة صراحة في الواجهة) — أي إضافة لطلب شبكة (fetch/XHR) لمعالجة الصور تكسر هذا الوعد وغير مقبولة.
+2. **يمنع إضافة أي dependency خارجية** (لا CDN، لا npm package، لا framework مثل React/Vue). التطبيق يجب أن يبقى ملفًا واحدًا self-contained يعمل offline بالكامل.
+3. **لا تُدخل build tools أو bundlers** (webpack/vite/etc.) أو تقسّم الكود لملفات متعددة إلا إذا طلب المستخدم ذلك صراحة — البساطة (ملف واحد قابل للنسخ والفتح مباشرة) هي ميزة مقصودة.
+4. **حافظ على توافق iOS/PWA**: أي تعديل على `<head>` أو الـ meta tags (`viewport`, `apple-mobile-web-app-*`, `theme-color`, `color-scheme`) يجب أن يبقى متوافقًا مع سلوك iOS Safari الحالي، ولا يُحذف التعامل مع `env(safe-area-inset-*)`.
+5. **حافظ على منطق الـ `token` counter** في العمليات async (`showOriginals`, `run`, إلخ) عند أي تعديل على pipeline المعالجة — هو ما يمنع سباقات النتائج (race conditions) عند تغيير المستخدم للإعدادات أثناء المعالجة.
+6. **لا تُبسّط أو تستبدل الخوارزميات اليدوية** (`stepDown` التصغير التدريجي، `sharpen` unsharp mask، `quantize` median-cut) بمكتبات خارجية أو بدائل متصفح (مثل `image-rendering` CSS) دون طلب صريح — هذه اختيارات مقصودة للحفاظ على جودة الصورة بدون اعتماديات.
+7. **حرّر الذاكرة دائمًا**: أي `ImageBitmap` أو `<canvas>` أو `Object URL` جديد يُنشأ يجب أن يُحرَّر عبر `release()` / `kill()` / `URL.revokeObjectURL()` في المسار الصحيح (بما فيه مسارات الأخطاء) لتفادي تسريب الذاكرة على الموبايل — الصور قد تكون كبيرة جدًا.
+8. **لا تُغيّر رقم الإصدار (`v1.1`) أو توقيع المطور (`Malek Barbari` في `.byline` و `footer`)** إلا إذا طلب المستخدم ذلك صراحة.
+9. **حافظ على أسلوب الكود القائم** (ES5-ish، بدون frameworks، تسمية مختصرة للمتغيرات كما هي في الملف) بدل إعادة كتابته بأسلوب حديث، حفاظًا على الانسجام والـ diff الصغير عند أي تعديل.
+10. **أي تغيير على واجهة المستخدم (الألوان، الخطوط، التخطيط) يجب أن يحافظ على الطابع البصري الحالي** (لوحة ألوان "ورقية/إيصال" — `--paper`, `--card`, `--ink`, `--stamp` بالأحمر كطابع ختم) ما لم يُطلب تصميم جديد صراحة.
