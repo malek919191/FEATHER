@@ -105,8 +105,20 @@
   .stub .nums .arrow{color:var(--ink-soft);padding:0 6px}
   .stub .nums .new{font-weight:650}
   .stub .dim{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-top:3px;padding-right:70px}
-  .stub .shot{display:block;width:100%;background:#EFEEE8;cursor:pointer;position:relative}
+  .stub .shot{display:block;width:100%;background:#EFEEE8;cursor:pointer;position:relative;
+    overflow:hidden;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   .stub .shot img{display:block;width:100%;height:auto}
+  /* the original, held under the compressed shot and revealed only while a finger is down */
+  .stub .shot img.peek{position:absolute;top:0;left:0;right:0;bottom:0;
+    width:100%;height:100%;object-fit:cover;z-index:1;display:none;
+    transform:scale(2);transform-origin:50% 50%}
+  .stub .shot.peeking img.peek{display:block}
+  .stub .shot.peeking .editBtn{opacity:0}
+  .peekTag{position:absolute;top:10px;right:10px;z-index:3;display:none;
+    font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;
+    color:var(--stamp);background:rgba(253,252,248,.94);border:1.5px solid var(--stamp);
+    border-radius:6px;padding:3px 8px;transform:rotate(-6deg);pointer-events:none}
+  .stub .shot.peeking .peekTag{display:block}
   .editBtn{position:absolute;top:10px;right:10px;width:38px;height:38px;
     border:none;border-radius:11px;background:rgba(10,16,22,.58);cursor:pointer;
     display:flex;align-items:center;justify-content:center;-webkit-appearance:none;z-index:2}
@@ -241,7 +253,7 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.5</span>
+      <span class="ver">v1.6</span>
       <button class="refresh" id="reload" type="button">↻ Update</button>
     </span>
   </header>
@@ -302,7 +314,8 @@
 
   <p class="hint">
     Nothing leaves your phone. Tap the corner icon to crop, rotate, or flip. Tap the image to compare
-    it against the original. Save opens the share sheet: Save Image puts it in Photos, Save to Files
+    it against the original, or press and hold to see the original itself, magnified.
+    Save opens the share sheet: Save Image puts it in Photos, Save to Files
     keeps the exact file shown here.
   </p>
 
@@ -924,7 +937,8 @@
         '<span class="arrow">&rarr;</span><span class="new"></span></div>' +
         '<div class="dim"></div>' +
       '</div>' +
-      '<div class="shot">' + editIcon() + '<img alt=""></div>';
+      '<div class="shot">' + editIcon() + '<img alt="">' +
+        '<img class="peek" alt=""><span class="peekTag">ORIGINAL</span></div>';
 
     el.querySelector(".name").textContent = original.name;
     fillStub(el, file, original, r);
@@ -941,6 +955,7 @@
     });
     wireEdit(el, idx);
     wireDelete(el, idx);
+    wirePeek(el);
     stubEls[idx] = el;
     stubs.appendChild(el);
   }
@@ -1062,6 +1077,62 @@
       e.stopPropagation();
       openEditor(idx);
     });
+  }
+
+  /* press and hold a photo to swap in the original, magnified 2x where the finger is;
+     the origin sits under the finger, so the frame is always covered and nothing spills out */
+  function wirePeek(el){
+    var shot = el.querySelector(".shot"), peek = shot.querySelector(".peek");
+    if (!shot || !peek) return;
+    var timer = 0, on = false, sx = 0, sy = 0;
+
+    function place(x, y){
+      var r = shot.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      var px = Math.max(0, Math.min(1, (x - r.left) / r.width)) * 100;
+      var py = Math.max(0, Math.min(1, (y - r.top) / r.height)) * 100;
+      peek.style.transformOrigin = px.toFixed(2) + "% " + py.toFixed(2) + "%";
+    }
+
+    /* the finger comes up and the original goes, in one frame — no fade, so the eye
+       catches the difference; dropping the src frees the decoded full-size image */
+    function stop(){
+      if (timer){ clearTimeout(timer); timer = 0; }
+      if (on){ on = false; shot.classList.remove("peeking"); }
+      peek.onload = null;
+      if (peek.getAttribute("src")) peek.removeAttribute("src");
+    }
+
+    shot.addEventListener("touchstart", function(e){
+      stop();
+      if (e.touches.length !== 1) return;
+      if (e.target.closest(".editBtn")) return;
+      var v = el._view;
+      if (!v || !v.refUrl) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      peek.src = v.refUrl;              /* decoding starts now, so the hold lands instantly */
+      timer = setTimeout(function(){
+        timer = 0; on = true;
+        place(sx, sy);
+        if (peek.complete && peek.naturalWidth) shot.classList.add("peeking");
+        else peek.onload = function(){ if (on) shot.classList.add("peeking"); };
+      }, 450);
+    }, { passive: true });
+
+    shot.addEventListener("touchmove", function(e){
+      var t = e.touches[0];
+      if (!t) return;
+      if (on){ e.preventDefault(); place(t.clientX, t.clientY); return; }
+      if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) stop();
+    }, { passive: false });
+
+    shot.addEventListener("touchend", function(e){
+      if (on) e.preventDefault();       /* swallow the tap that would open the compare view */
+      stop();
+    }, { passive: false });
+
+    shot.addEventListener("touchcancel", stop);
+    shot.addEventListener("contextmenu", function(e){ e.preventDefault(); });
   }
 
   function wireDelete(el, idx){
