@@ -47,7 +47,7 @@
     border:1px solid var(--rule);border-radius:9px;padding:3px 8px 4px;
     font-family:var(--mono);font-size:10px;letter-spacing:.08em;line-height:1.2;
     text-transform:uppercase;transition:background .15s,border-color .15s,color .15s}
-  .refresh:active{background:#16212B;border-color:#16212B;color:#FFFFFF}
+  .refresh:active,.refresh.tapped{background:#16212B;border-color:#16212B;color:#FFFFFF}
   .label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
     text-transform:uppercase;margin-bottom:7px}
   .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:18px}
@@ -402,8 +402,18 @@
      version is never requested; a plain reload can also come straight back
      from cache. Loading an address the phone has never seen forces a real
      download, which is the only thing that reliably brings the update in. */
-  $("reload").addEventListener("click", function(){
-    location.replace(location.href.replace(/[?#].*$/, "") + "?u=" + Date.now());
+  var reloadBtn = $("reload");
+  /* iOS only paints :active on an element that carries a touch listener,
+     and the jump below would replace the page before any flash could be
+     seen — so the press is drawn here and the jump waits for it to land */
+  reloadBtn.addEventListener("touchstart", function(){
+    this.classList.add("tapped");
+  }, { passive: true });
+  reloadBtn.addEventListener("click", function(){
+    this.classList.add("tapped");
+    setTimeout(function(){
+      location.replace(location.href.replace(/[?#].*$/, "") + "?u=" + Date.now());
+    }, 220);
   });
 
   function bind(containerId, cb){
