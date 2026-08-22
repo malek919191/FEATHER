@@ -111,11 +111,13 @@
      touch is what makes iOS open its own full-screen preview over the app */
   .stub .shot img{display:block;width:100%;height:auto;pointer-events:none;
     -webkit-touch-callout:none;-webkit-user-drag:none;user-select:none}
-  /* the original, held under the compressed shot and revealed only while a finger is down */
+  /* both versions sit magnified under the shot; the hold shows one at a time */
   .stub .shot img.peek{position:absolute;top:0;left:0;right:0;bottom:0;
     width:100%;height:100%;object-fit:cover;z-index:1;display:none;
     transform:scale(2);transform-origin:50% 50%}
-  .stub .shot.peeking img.peek{display:block}
+  .stub .shot.peeking img.pNew{display:block}
+  .stub .shot.peeking.orig img.pNew{display:none}
+  .stub .shot.peeking.orig img.pOrig{display:block}
   .stub .shot.peeking .editBtn{opacity:0}
   /* the same tag the compare viewer puts on its original, so the word reads alike in both places */
   .peekTag{position:absolute;top:10px;right:12px;z-index:3;display:none;
@@ -257,7 +259,7 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.6.2</span>
+      <span class="ver">v1.6.3</span>
       <button class="refresh" id="reload" type="button">↻ Update</button>
     </span>
   </header>
@@ -318,8 +320,9 @@
 
   <p class="hint">
     Nothing leaves your phone. Tap the corner icon to crop, rotate, or flip. Tap the image to compare
-    it against the original, or press and hold to see the original itself, magnified.
-    Save opens the share sheet: Save Image puts it in Photos, Save to Files
+    it against the original. Press and hold to inspect it up close: it is magnified
+    where your finger is, and flashes the original in the middle so you can see what
+    the compression took. Save opens the share sheet: Save Image puts it in Photos, Save to Files
     keeps the exact file shown here.
   </p>
 
@@ -942,7 +945,8 @@
         '<div class="dim"></div>' +
       '</div>' +
       '<div class="shot">' + editIcon() + '<img alt="">' +
-        '<img class="peek" alt=""><span class="peekTag">Original</span></div>';
+        '<img class="peek pNew" alt=""><img class="peek pOrig" alt="">' +
+        '<span class="peekTag"></span></div>';
 
     el.querySelector(".name").textContent = original.name;
     fillStub(el, file, original, r);
@@ -1103,30 +1107,52 @@
     });
   }
 
-  /* press and hold a photo to swap in the original, magnified 2x where the finger is;
-     the origin sits under the finger, so the frame is always covered and nothing spills out */
+  /* Press and hold a photo and it grows to twice its size under the finger, then walks
+     through what the compression did: the compressed photo first, the original in the
+     middle as the reference, then back to the compressed one, which stays until the
+     finger lifts — so the last thing seen is the one that will be saved. */
+  var HOLD = 450, BEAT = 750;
+
   function wirePeek(el){
-    var shot = el.querySelector(".shot"), peek = shot.querySelector(".peek");
-    if (!shot || !peek) return;
-    var timer = 0, on = false, sx = 0, sy = 0, ox = 0, oy = 0, ax = 0, ay = 0;
+    var shot = el.querySelector(".shot");
+    if (!shot) return;
+    var pNew = shot.querySelector(".pNew"), pOrig = shot.querySelector(".pOrig"),
+        tagEl = shot.querySelector(".peekTag");
+    if (!pNew || !pOrig || !tagEl) return;
+    var timer = 0, beat = 0, on = false, sx = 0, sy = 0, ox = 0, oy = 0, ax = 0, ay = 0;
 
     /* ox, oy is the anchor inside the frame: the spot that stays put while the rest
        grows around it, which is what keeps the frame covered from any press point */
     function setOrigin(){
       var r = shot.getBoundingClientRect();
       if (!r.width || !r.height) return;
-      peek.style.transformOrigin =
-        (Math.max(0, Math.min(1, ox / r.width)) * 100).toFixed(2) + "% " +
-        (Math.max(0, Math.min(1, oy / r.height)) * 100).toFixed(2) + "%";
+      var o = (Math.max(0, Math.min(1, ox / r.width)) * 100).toFixed(2) + "% " +
+              (Math.max(0, Math.min(1, oy / r.height)) * 100).toFixed(2) + "%";
+      pNew.style.transformOrigin = o;
+      pOrig.style.transformOrigin = o;
     }
 
-    /* the finger comes up and the original goes, in one frame — no fade, so the eye
-       catches the difference; dropping the src frees the decoded full-size image */
+    function show(orig){
+      shot.classList.toggle("orig", orig);
+      tagEl.textContent = orig ? "Original" : "Compressed";
+    }
+
+    /* the original is the only one that may still be decoding: it is the full-size
+       reference, while the compressed one is already on screen behind the hold */
+    function whenOrigReady(fn){
+      if (pOrig.complete && pOrig.naturalWidth) fn();
+      else pOrig.onload = function(){ if (on) fn(); };
+    }
+
+    /* the finger comes up and everything goes, in one frame — no fade, so the eye
+       catches the difference; dropping the srcs frees the decoded full-size image */
     function stop(){
       if (timer){ clearTimeout(timer); timer = 0; }
-      if (on){ on = false; shot.classList.remove("peeking"); }
-      peek.onload = null;
-      if (peek.getAttribute("src")) peek.removeAttribute("src");
+      if (beat){ clearTimeout(beat); beat = 0; }
+      if (on){ on = false; shot.classList.remove("peeking", "orig"); }
+      pOrig.onload = null;
+      if (pNew.getAttribute("src")) pNew.removeAttribute("src");
+      if (pOrig.getAttribute("src")) pOrig.removeAttribute("src");
     }
 
     shot.addEventListener("touchstart", function(e){
@@ -1134,17 +1160,26 @@
       if (e.touches.length !== 1) return;
       if (e.target.closest(".editBtn")) return;
       var v = el._view;
-      if (!v || !v.refUrl) return;
+      if (!v || !v.refUrl || !v.newUrl) return;
       sx = e.touches[0].clientX; sy = e.touches[0].clientY;
-      peek.src = v.refUrl;              /* decoding starts now, so the hold lands instantly */
+      /* decoding starts now, so each step of the hold lands without a stall */
+      pNew.src = v.newUrl;
+      pOrig.src = v.refUrl;
       timer = setTimeout(function(){
         timer = 0; on = true;
         var r = shot.getBoundingClientRect();
         ox = sx - r.left; oy = sy - r.top; ax = sx; ay = sy;
         setOrigin();
-        if (peek.complete && peek.naturalWidth) shot.classList.add("peeking");
-        else peek.onload = function(){ if (on) shot.classList.add("peeking"); };
-      }, 450);
+        show(false);
+        shot.classList.add("peeking");
+        beat = setTimeout(function(){
+          beat = 0;
+          whenOrigReady(function(){
+            show(true);
+            beat = setTimeout(function(){ beat = 0; show(false); }, BEAT);
+          });
+        }, BEAT);
+      }, HOLD);
     }, { passive: true });
 
     shot.addEventListener("touchmove", function(e){
