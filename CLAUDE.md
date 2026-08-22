@@ -11,18 +11,21 @@ It is designed as a mini PWA for mobile, particularly iOS — see the `apple-mob
 ### Features (all inside `index.html`)
 
 1. **Multi-image selection** via `<input type="file" multiple accept="image/*">`.
-2. **Output format**: Source (keep the original format), JPEG, PNG, or PNG-8 (256→64 colours via a custom median-cut quantizer).
+2. **Output format**: Source (keep the original format), JPEG, or PNG.
 3. **Output dimensions**: presets (900/700/500/350px on the longest side) or custom W/H, with automatic aspect-ratio locking.
 4. **Compression quality** (30%–90%) — automatically disabled when the target format is lossless (PNG).
-5. **Built-in cropper**: crop with preset or free ratios, 90° rotation, horizontal/vertical flip, a rule-of-thirds grid, and drag grips that work with both touch and mouse.
-6. **Before/after compare viewer**: a drag slider comparing the original against the compressed result, showing dimensions and byte size for each.
-7. **Sharing** via `navigator.share` (Web Share API) — opens the iOS share sheet so the user can save to Photos or Files.
+5. **Sharpness** (unsharp mask, 0–1, default 0): a slider on the main screen sets it for every photo, and a second slider in the compare viewer sets it for one photo, detaching that photo from the global value until its `Reset`. It applies at any output size, not only when the image is downscaled.
+6. **Built-in cropper**: crop with preset or free ratios, 90° rotation, horizontal/vertical flip, free tilt (−90°…90°, with a triangle button that levels the tilt alone), a rule-of-thirds grid, and drag grips that work with both touch and mouse.
+7. **Before/after compare viewer**: a drag slider comparing the original against the compressed result, showing dimensions and byte size for each. Changing sharpness here re-encodes that photo at its real output size, so the figures shown are the ones that will save.
+8. **Sharing** via `navigator.share` (Web Share API) — opens the iOS share sheet so the user can save to Photos or Files.
 
 ### Processing pipeline
 
-`decode()` (`createImageBitmap`, falling back to `<img>`) → `cropAndOrient()` (applies crop + rotation + flip with exact coordinate-space transforms) → `stepDown()` (progressive halving rather than a single downscale, to avoid aliasing) → `sharpen()` (a simple unsharp mask via hand-rolled convolution over `ImageData`) → `quantize()` (PNG-8 only, custom median-cut) → `toBlob()` for final encoding.
+`decode()` (`createImageBitmap`, falling back to `<img>`) → `cropAndOrient()` (applies crop + rotation + flip with exact coordinate-space transforms) → `stepDown()` (progressive halving rather than a single downscale, to avoid aliasing) → `sharpen()` (a simple unsharp mask via hand-rolled convolution over `ImageData`, skipped entirely at 0) → `toBlob()` for final encoding.
 
-Each image is processed independently and asynchronously, guarded by a `token` counter that cancels stale work when the user changes settings mid-run (race-condition guard).
+A free tilt cannot be expressed as a source rectangle, so `cropAndOrient()` branches to `cropTilted()`, which replays the whole transform at source resolution and lifts the crop out of it. Edits with no tilt keep the original source-rect path, so that path must stay intact.
+
+Each image is processed independently and asynchronously, guarded by a `token` counter that cancels stale work when the user changes settings mid-run (race-condition guard). `results` is keyed by photo index rather than pushed, because the viewer re-encodes a single photo in place; `sharpToken` guards that path the same way.
 
 ## Structure and development
 
@@ -69,13 +72,22 @@ Every change to this app ships as a GitHub commit, and the commit history **is**
 
 **Note on history:** this repository is the project's current home. Versions `v0.0` through `v1.1` were developed in `malek919191/Featherweight`, which remains as the archive of that earlier history — which is why the log here is short.
 
-1. **Write a real commit message — never "Update index.html".** State what actually changed, and lead with the version when one is released:
-   `v1.0 — custom size fields, crop delete button, reset button`
+1. **The commit message is how a version is found again — never "Update index.html".** There are no git tags in this project, and none are wanted: the message alone carries the whole index, so it has to earn that on its own.
+
+   **A commit that bumps the version must open with the number,** followed by an em dash and the changes a user would notice, named in the words that user would use:
+
+   ```
+   v1.0 — custom size fields, crop delete button, reset button
+   ```
+
+   That first line is what makes `git log --grep="^v1\.2"` land on the release in one step, so the version must lead it and never sit mid-sentence. List the actual changes, not a category: "free tilt in the cropper, sharpening and PNG-8 removed" is findable a year later; "various improvements", "several fixes" and "update cropper" are not, and are not acceptable. If a change is invisible to the user, say what it is instead of dressing it up.
+
+   Use the body beneath that line for what the summary cannot hold: why the change was made, what it breaks, how it was verified. Commits that do not bump the version follow the same standard, minus the number.
+
    Earlier history is largely unlabeled; this is the single biggest gap, and it must not continue.
-2. **Tag released versions.** When you bump the number in `index.html`, say so explicitly in the commit message and add a matching git tag (`v1.0`, `v1.1`, …), so a released version can be found without scrolling the log.
-3. **Never force-push, and never rewrite history.** History is linear and additive, always — including experiments that were later reverted. Every version must stay retrievable forever.
-4. **Use commit boundaries.** Split logically separate work into separate commits ("refactor crop math", then "add reset button") rather than one large bundle, so a regression can be traced to a single commit.
-5. **Rolling back** means `git revert` (preferred — it keeps history intact), or committing the old file content forward as a new commit. Never delete or rewrite the commits in between.
+2. **Never force-push, and never rewrite history.** History is linear and additive, always — including experiments that were later reverted. Every version must stay retrievable forever.
+3. **Use commit boundaries.** Split logically separate work into separate commits ("refactor crop math", then "add reset button") rather than one large bundle, so a regression can be traced to a single commit.
+4. **Rolling back** means `git revert` (preferred — it keeps history intact), or committing the old file content forward as a new commit. Never delete or rewrite the commits in between.
 
 ### How changes get verified
 
@@ -97,7 +109,7 @@ This has hard consequences for every change shipped:
 3. **Do not introduce build tools or bundlers** (webpack, vite, etc.) or split the code across multiple files unless explicitly asked — the simplicity of one copyable, directly-openable file is a deliberate feature.
 4. **Preserve iOS/PWA compatibility**: any change to `<head>` or to the meta tags (`viewport`, `apple-mobile-web-app-*`, `theme-color`, `color-scheme`) must stay compatible with current iOS Safari behaviour, and the `env(safe-area-inset-*)` handling must not be removed.
 5. **Preserve the `token` counter logic** in async operations (`showOriginals`, `run`, and so on) whenever touching the processing pipeline — it is what prevents stale results from racing in when the user changes settings mid-processing.
-6. **Do not simplify or replace the hand-written algorithms** (`stepDown` progressive downscaling, `sharpen` unsharp mask, `quantize` median-cut) with external libraries or browser alternatives (such as the `image-rendering` CSS property) without an explicit request — these are deliberate choices that preserve image quality without dependencies.
+6. **Do not simplify or replace the hand-written algorithms** (`stepDown` progressive downscaling, `sharpen` unsharp mask, `cropTilted` tilt transform) with external libraries or browser alternatives (such as the `image-rendering` CSS property) without an explicit request — these are deliberate choices that preserve image quality without dependencies.
 7. **Always free memory**: every `ImageBitmap`, `<canvas>`, and Object URL created must be released via `release()` / `kill()` / `URL.revokeObjectURL()` on the correct path, including error paths, to avoid leaking memory on mobile — images can be very large.
 8. **Do not change the developer byline** (`Malek Barbari` in `.byline` and `footer`) unless explicitly asked. The **version number, by contrast, must be updated** with every functional or cosmetic change, following the Versioning section above — never leave a change without the appropriate bump.
 9. **Match the existing code style** (ES5-ish, no frameworks, the same terse variable naming already used in the file) rather than rewriting it in a modern idiom, to keep the file coherent and diffs small.
