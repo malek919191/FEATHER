@@ -153,10 +153,10 @@
     flex-direction:column;align-items:center;justify-content:center;
     padding:calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px)}
   #stage{position:relative;overflow:hidden;border-radius:var(--r);
-    background:#FFFFFF;max-width:100%;max-height:76vh}
+    background:#FFFFFF;flex:0 0 auto}
   #stage .pane{position:absolute;inset:0;overflow:hidden}
   #stage .pane img{position:absolute;top:0;left:0;width:100%;height:100%;
-    object-fit:fill;-webkit-user-select:none;user-select:none;pointer-events:none}
+    object-fit:cover;-webkit-user-select:none;user-select:none;pointer-events:none}
   #paneNew{clip-path:inset(0 0 0 var(--split))}
   #handle{position:absolute;top:0;bottom:0;left:var(--split);width:22px;
     margin-left:-11px;touch-action:none;cursor:ew-resize;z-index:3}
@@ -974,17 +974,31 @@
     stubs.appendChild(el);
   }
 
-  var viewIdx = -1;
+  var viewIdx = -1, viewR = null;
+
+  /* the photo gets whatever room is left once the numbers, the slider and the close
+     button have taken theirs — a fixed fraction of the screen overflowed the column,
+     and the stage was quietly squashed to fit, which stretched the photo inside it */
+  function fitStage(r){
+    var vcs = getComputedStyle(viewer), used = 0;
+    ["viewerCap", "viewSharp", "closeBtn"].forEach(function(id){
+      var n = $(id), cs = getComputedStyle(n);
+      used += n.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+    });
+    var vw = Math.min(viewer.clientWidth - parseFloat(vcs.paddingLeft)
+                      - parseFloat(vcs.paddingRight), 900);
+    var vh = viewer.clientHeight - parseFloat(vcs.paddingTop)
+             - parseFloat(vcs.paddingBottom) - used;
+    var s = Math.min(vw / r.ow, Math.max(80, vh) / r.oh);
+    stage.style.width  = Math.round(r.ow * s) + "px";
+    stage.style.height = Math.round(r.oh * s) + "px";
+  }
 
   function openViewer(idx, oldUrl, newUrl, r, oldSize, newSize){
     viewIdx = idx;
+    viewR = r;
     imgOld.src = oldUrl;
     imgNew.src = newUrl;
-    var vw = Math.min(window.innerWidth - 20, 900);
-    var vh = window.innerHeight * 0.76;
-    var s = Math.min(vw / r.ow, vh / r.oh);
-    stage.style.width  = Math.round(r.ow * s) + "px";
-    stage.style.height = Math.round(r.oh * s) + "px";
     stage.style.setProperty("--split", "50%");
     $("capOldDim").textContent  = r.ow + "\u00D7" + r.oh;
     $("capOldSize").textContent = fmt(oldSize);
@@ -992,6 +1006,7 @@
     $("capNewSize").textContent = fmt(newSize);
     $("oneSharp").value = effSharp(idx);
     viewer.classList.remove("hidden");
+    fitStage(r);
   }
 
   /* one photo, re-encoded at the real output size so what is shown is what saves */
@@ -1019,6 +1034,7 @@
       el._view = { refUrl: refUrl, newUrl: newUrl, r: r, oldSize: f.size, newSize: out.size };
 
       if (viewIdx === idx && !viewer.classList.contains("hidden")){
+        viewR = r;
         imgOld.src = refUrl;
         imgNew.src = newUrl;
         $("capNewSize").textContent = fmt(out.size);
@@ -1061,6 +1077,10 @@
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   });
+  window.addEventListener("resize", function(){
+    if (viewR && !viewer.classList.contains("hidden")) fitStage(viewR);
+  });
+
   $("closeBtn").addEventListener("click", function(){
     viewer.classList.add("hidden");
     imgOld.removeAttribute("src"); imgNew.removeAttribute("src");
