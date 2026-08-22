@@ -62,7 +62,7 @@ v2.7  →  cosmetic tweak       →  v2.7.1
 
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
-The current version in `index.html` is **`v1.6`**.
+The current version in `index.html` is **`v1.6.1`**.
 
 ## Git workflow and release history
 
