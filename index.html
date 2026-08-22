@@ -65,6 +65,17 @@
     font-family:var(--mono);font-size:13.5px;font-weight:650;color:#16212B;
     -webkit-appearance:none;padding:0}
   .spacer{height:10px}
+  .sharpRow{display:flex;flex-direction:column;align-items:stretch;margin-bottom:4px}
+  .sharpBar{-webkit-appearance:none;appearance:none;width:100%;height:26px;margin:0;
+    background:transparent;cursor:pointer}
+  .sharpBar::-webkit-slider-runnable-track{height:2px;background:var(--rule);border-radius:2px}
+  .sharpBar::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:22px;height:22px;margin-top:-10px;border-radius:50%;background:#16212B;
+    box-shadow:0 1px 2px rgba(22,33,43,.35)}
+  .sharpBar::-moz-range-track{height:2px;background:var(--rule);border-radius:2px}
+  .sharpBar::-moz-range-thumb{width:22px;height:22px;border:none;border-radius:50%;
+    background:#16212B;box-shadow:0 1px 2px rgba(22,33,43,.35)}
+  .ticks.light i{background:var(--rule)}
   .actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:22px}
   .btn{display:block;width:100%;border:none;border-radius:var(--r);cursor:pointer;
     font-family:var(--sans);font-size:13.5px;font-weight:650;padding:11px 6px;
@@ -142,6 +153,11 @@
   #viewerCap .col{text-align:center}
   #viewerCap .col div + div{margin-top:4px;font-size:14px;color:#FFFFFF;font-weight:650}
   #viewerCap .mid{color:#5A6B78;font-size:15px}
+  #viewSharp{margin-top:18px;width:100%;max-width:300px;
+    display:flex;flex-direction:column;align-items:center}
+  #viewSharp .vLabel{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+    text-transform:uppercase;color:#8AA0B2;margin-bottom:2px}
+  #viewSharp.busy{opacity:.5}
   #closeBtn{margin-top:16px;border:1px solid #46586A;background:transparent;color:#DCE6EE;
     font-family:var(--sans);font-size:14px;font-weight:650;padding:10px 26px;
     border-radius:var(--r);cursor:pointer;-webkit-appearance:none}
@@ -154,6 +170,16 @@
   #cropBox{position:relative;touch-action:none;line-height:0}
   #cropCanvas{display:block;border-radius:8px}
   #cropSize{font-family:var(--mono);font-size:13px;font-weight:650;color:#DCE6EE;letter-spacing:.06em}
+  .tiltWrap{width:100%;max-width:300px;display:flex;flex-direction:column;align-items:center}
+  .ticks{align-self:stretch;display:flex;justify-content:space-between;
+    margin:0 11px;height:7px}
+  .ticks i{width:1px;height:7px;background:#46586A}
+  .tiltZero{appearance:none;-webkit-appearance:none;background:transparent;border:none;
+    padding:6px 14px 2px;margin:0;cursor:pointer;line-height:0}
+  .tiltZero::before{content:"";display:block;width:0;height:0;
+    border-left:6px solid transparent;border-right:6px solid transparent;
+    border-bottom:8px solid #8AA0B2}
+  .tiltZero:active::before{border-bottom-color:#FFFFFF}
   .tilt{-webkit-appearance:none;appearance:none;width:100%;max-width:300px;
     height:26px;margin:0;background:transparent;cursor:pointer}
   .tilt::-webkit-slider-runnable-track{height:2px;background:#46586A;border-radius:2px}
@@ -208,7 +234,7 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.2</span>
+      <span class="ver">v1.3</span>
     </span>
   </header>
 
@@ -241,6 +267,14 @@
     <button class="opt" data-q="0.60" aria-pressed="false">Med<small>60</small></button>
     <button class="opt" data-q="0.45" aria-pressed="false">Low<small>45</small></button>
     <button class="opt" data-q="0.30" aria-pressed="false">Least<small>30</small></button>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="label">Sharpness</div>
+  <div class="sharpRow">
+    <input id="sharp" class="sharpBar" type="range" min="0" max="1" step="0.05" value="0" aria-label="Sharpness">
+    <div class="ticks light"><i></i><i></i><i></i></div>
   </div>
 
   <input type="file" id="picker" accept="image/*" multiple>
@@ -283,6 +317,13 @@
     <div class="mid">&rarr;</div>
     <div class="col"><div id="capNewDim"></div><div id="capNewSize"></div></div>
   </div>
+  <div id="viewSharp">
+    <div class="vLabel">Sharpness &mdash; this photo</div>
+    <div class="tiltWrap">
+      <input id="oneSharp" class="tilt" type="range" min="0" max="1" step="0.05" value="0" aria-label="Sharpness">
+      <div class="ticks"><i></i><i></i><i></i></div>
+    </div>
+  </div>
   <button id="closeBtn">Close</button>
 </div>
 
@@ -301,7 +342,11 @@
       </div>
     </div>
     <div id="cropSize"></div>
-    <input id="tilt" class="tilt" type="range" min="-45" max="45" step="1" value="0" aria-label="Tilt">
+    <div class="tiltWrap">
+      <input id="tilt" class="tilt" type="range" min="-90" max="90" step="1" value="0" aria-label="Tilt">
+      <div class="ticks"><i></i><i></i><i></i></div>
+      <button id="tiltZero" class="tiltZero" aria-label="Level"></button>
+    </div>
   </div>
   <div class="cropBar">
     <div class="ratios" id="ratios">
@@ -334,6 +379,9 @@
   var format = "src", targetW = null, quality = null;
   var customMode = false, customW = null, customH = null, baseRatio = null;
   var sourceFiles = [], edits = [], results = [], urls = [], token = 0, busy = false;
+  /* sharpAll drives every photo; sharps[i] is null until that photo is set
+     on its own in the viewer, after which it stops following sharpAll */
+  var sharpAll = 0, sharps = [], stubEls = [], sharpToken = 0;
 
   var $ = function(id){ return document.getElementById(id); };
   var picker = $("picker"), pickBtn = $("pick"), subEl = $("sub"),
@@ -401,6 +449,13 @@
     customTimer = setTimeout(function(){ refreshGate(); rerender(); }, 500);
   }
 
+  var sharpTimer = null;
+  $("sharp").addEventListener("input", function(){
+    sharpAll = parseFloat(this.value) || 0;
+    clearTimeout(sharpTimer);
+    sharpTimer = setTimeout(rerender, 400);
+  });
+
   function longestTarget(){
     if (!customMode) return targetW;
     if (!customW || !customH) return null;
@@ -411,6 +466,9 @@
     if (!sourceFiles.length) return;
     if (ready()) run(); else showOriginals();
   }
+
+  function effSharp(i){ return sharps[i] === null || sharps[i] === undefined ? sharpAll : sharps[i]; }
+  function readyFiles(){ return results.filter(Boolean); }
 
   function extOf(mime){ return mime === "image/png" ? "png" : "jpg"; }
   function labelOf(type){
@@ -441,7 +499,7 @@
     var ll = lossless();
     levelsRow.classList.toggle("muted", ll);
     qLabel.textContent = ll ? "Quality \u2014 not used here" : "Quality";
-    shBtn.disabled = !(ready() && results.length);
+    shBtn.disabled = !(ready() && readyFiles().length);
     subEl.style.display = (sourceFiles.length && !ready()) ? "block" : "none";
   }
 
@@ -467,6 +525,7 @@
     if (picker.files && picker.files.length){
       sourceFiles = Array.prototype.slice.call(picker.files);
       edits = sourceFiles.map(function(){ return null; });
+      sharps = sourceFiles.map(function(){ return null; });
       baseRatio = null; customW = null; customH = null;
       cwEl.value = ""; chEl.value = "";
       setFormatFromFiles();
@@ -644,7 +703,26 @@
     return out;
   }
 
-  async function process(file, edit, longest, q, mime){
+  /* unsharp mask: lift each pixel away from its four neighbours */
+  function sharpen(ctx, w, h, amt){
+    if (w < 3 || h < 3 || amt <= 0) return;
+    var d = ctx.getImageData(0, 0, w, h), px = d.data;
+    var src = new Uint8ClampedArray(px);
+    var c = 1 + 4 * amt, x, y, k, i, o;
+    for (y = 1; y < h - 1; y++){
+      for (x = 1; x < w - 1; x++){
+        i = (y * w + x) * 4;
+        for (k = 0; k < 3; k++){
+          o = src[i+k] * c
+            - amt * (src[i - 4 + k] + src[i + 4 + k] + src[i - w*4 + k] + src[i + w*4 + k]);
+          px[i+k] = o;
+        }
+      }
+    }
+    ctx.putImageData(d, 0, 0);
+  }
+
+  async function process(file, edit, longest, q, mime, sharp){
     var bmp = await decode(file);
     var d0 = dimsOf(bmp);
     var e = buildEdited(bmp, d0.w, d0.h, edit);
@@ -663,6 +741,8 @@
     var canvas = stepDown(e.src, ow, oh, w, h);
     release(bmp);
     if (e.temp) kill(e.temp);
+
+    if (sharp > 0) sharpen(canvas.getContext("2d"), w, h, sharp);
 
     var blob = await toBlob(canvas, mime, q);
     kill(canvas);
@@ -699,7 +779,7 @@
   async function showOriginals(){
     var mine = ++token;
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
-    urls = []; results = []; stubs.innerHTML = "";
+    urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
     setStatus("");
 
@@ -741,7 +821,7 @@
     busy = true;
 
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
-    urls = []; results = []; stubs.innerHTML = "";
+    urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
     shBtn.disabled = true;
 
@@ -756,10 +836,10 @@
       try {
         var mime = outMime(f);
         var q = quality === null ? 0.75 : quality;
-        var r = await process(f, edits[i], longest, q, mime);
+        var r = await process(f, edits[i], longest, q, mime, effSharp(i));
         if (mine !== token) break;
         var out = new File([r.blob], "fw-" + base + "-" + (i+1) + "." + extOf(mime), { type: mime });
-        results.push(out);
+        results[i] = out;
         tOld += f.size; tNew += r.blob.size;
         addStub(out, f, r, i);
       } catch (e){ addFail(f.name, i); }
@@ -768,18 +848,39 @@
     busy = false;
     if (mine !== token){ rerender(); return; }
 
-    if (!results.length){ setStatus("Could not read those files. Try picking from your photo library.", true); return; }
+    var done = readyFiles();
+    if (!done.length){ setStatus("Could not read those files. Try picking from your photo library.", true); return; }
     setStatus("");
     $("tOld").textContent = fmt(tOld);
     $("tNew").textContent = fmt(tNew);
     totalBox.classList.remove("hidden");
     refreshGate();
-    shBtn.textContent = results.length > 1 ? "Save " + results.length : "Save";
+    shBtn.textContent = done.length > 1 ? "Save " + done.length : "Save";
+  }
+
+  function retotal(){
+    var tOld = 0, tNew = 0;
+    for (var i = 0; i < sourceFiles.length; i++){
+      if (!results[i]) continue;
+      tOld += sourceFiles[i].size; tNew += results[i].size;
+    }
+    $("tOld").textContent = fmt(tOld);
+    $("tNew").textContent = fmt(tNew);
+  }
+
+  /* the numbers a stub shows change whenever its photo is processed again */
+  function fillStub(el, file, original, r){
+    var grew = file.size >= original.size;
+    var pct = original.size > 0 ? Math.round((1 - file.size/original.size) * 100) : 0;
+    var old = el.querySelector(".old");
+    el.querySelector(".stamp").textContent = (grew ? "+" + Math.abs(pct) : "\u2212" + pct) + "%";
+    old.className = "old" + (grew ? "" : " cut");
+    old.textContent = fmt(original.size);
+    el.querySelector(".new").textContent = fmt(file.size);
+    el.querySelector(".dim").textContent = r.ow + "\u00D7" + r.oh + "  \u2192  " + r.w + "\u00D7" + r.h;
   }
 
   function addStub(file, original, r, idx){
-    var grew = file.size >= original.size;
-    var pct = original.size > 0 ? Math.round((1 - file.size/original.size) * 100) : 0;
     var newUrl = URL.createObjectURL(file);
     var refUrl = r.refBlob ? URL.createObjectURL(r.refBlob) : URL.createObjectURL(original);
     urls.push(newUrl, refUrl);
@@ -789,27 +890,30 @@
     el.innerHTML =
       '<div class="meta">' +
         delIcon() +
-        '<div class="stamp">' + (grew ? "+" + Math.abs(pct) : "\u2212" + pct) + '%</div>' +
+        '<div class="stamp"></div>' +
         '<div class="name"></div>' +
-        '<div class="nums"><span class="old' + (grew ? '' : ' cut') + '"></span>' +
+        '<div class="nums"><span class="old"></span>' +
         '<span class="arrow">&rarr;</span><span class="new"></span></div>' +
         '<div class="dim"></div>' +
       '</div>' +
       '<div class="shot">' + editIcon() + '<img alt=""></div>';
 
     el.querySelector(".name").textContent = original.name;
-    el.querySelector(".old").textContent = fmt(original.size);
-    el.querySelector(".new").textContent = fmt(file.size);
-    el.querySelector(".dim").textContent = r.ow + "\u00D7" + r.oh + "  \u2192  " + r.w + "\u00D7" + r.h;
+    fillStub(el, file, original, r);
+
+    /* kept on the node so a later reprocess can swap it without rebinding */
+    el._view = { refUrl: refUrl, newUrl: newUrl, r: r, oldSize: original.size, newSize: file.size };
 
     var shot = el.querySelector(".shot");
     shot.querySelector("img").src = newUrl;
     shot.addEventListener("click", function(e){
       if (e.target.closest(".editBtn")) return;
-      openViewer(refUrl, newUrl, r, original.size, file.size);
+      var v = el._view;
+      openViewer(idx, v.refUrl, v.newUrl, v.r, v.oldSize, v.newSize);
     });
     wireEdit(el, idx);
     wireDelete(el, idx);
+    stubEls[idx] = el;
     stubs.appendChild(el);
   }
 
@@ -823,7 +927,10 @@
     stubs.appendChild(el);
   }
 
-  function openViewer(oldUrl, newUrl, r, oldSize, newSize){
+  var viewIdx = -1;
+
+  function openViewer(idx, oldUrl, newUrl, r, oldSize, newSize){
+    viewIdx = idx;
     imgOld.src = oldUrl;
     imgNew.src = newUrl;
     var vw = Math.min(window.innerWidth - 20, 900);
@@ -836,8 +943,53 @@
     $("capOldSize").textContent = fmt(oldSize);
     $("capNewDim").textContent  = r.w + "\u00D7" + r.h;
     $("capNewSize").textContent = fmt(newSize);
+    $("oneSharp").value = effSharp(idx);
     viewer.classList.remove("hidden");
   }
+
+  /* one photo, re-encoded at the real output size so what is shown is what saves */
+  async function reprocessOne(idx){
+    var f = sourceFiles[idx], el = stubEls[idx];
+    if (!f || !el || !ready()) return;
+    var mine = ++sharpToken, base = token;
+    $("viewSharp").classList.add("busy");
+    try {
+      var mime = outMime(f);
+      var q = quality === null ? 0.75 : quality;
+      var r = await process(f, edits[idx], longestTarget(), q, mime, effSharp(idx));
+      if (mine !== sharpToken || base !== token){ $("viewSharp").classList.remove("busy"); return; }
+
+      var name = results[idx] ? results[idx].name : "fw-" + tag() + "-" + (idx+1) + "." + extOf(mime);
+      var out = new File([r.blob], name, { type: mime });
+      results[idx] = out;
+
+      var newUrl = URL.createObjectURL(out);
+      var refUrl = r.refBlob ? URL.createObjectURL(r.refBlob) : URL.createObjectURL(f);
+      urls.push(newUrl, refUrl);
+
+      fillStub(el, out, f, r);
+      el.querySelector(".shot img").src = newUrl;
+      el._view = { refUrl: refUrl, newUrl: newUrl, r: r, oldSize: f.size, newSize: out.size };
+
+      if (viewIdx === idx && !viewer.classList.contains("hidden")){
+        imgOld.src = refUrl;
+        imgNew.src = newUrl;
+        $("capNewSize").textContent = fmt(out.size);
+        $("capNewDim").textContent = r.w + "\u00D7" + r.h;
+      }
+      retotal();
+    } catch (e){ /* keep the previous result on failure */ }
+    $("viewSharp").classList.remove("busy");
+  }
+
+  var oneSharpTimer = null;
+  $("oneSharp").addEventListener("input", function(){
+    if (viewIdx < 0) return;
+    sharps[viewIdx] = parseFloat(this.value) || 0;
+    var idx = viewIdx;
+    clearTimeout(oneSharpTimer);
+    oneSharpTimer = setTimeout(function(){ reprocessOne(idx); }, 350);
+  });
 
   function setSplit(clientX){
     var box = stage.getBoundingClientRect();
@@ -897,6 +1049,8 @@
     if (idx < 0 || idx >= sourceFiles.length) return;
     sourceFiles.splice(idx, 1);
     edits.splice(idx, 1);
+    sharps.splice(idx, 1);
+    stubEls.splice(idx, 1);
     if (!sourceFiles.length){ clearAll(); return; }
     if (idx === 0) await readBaseRatio();
     rerender();
@@ -905,7 +1059,7 @@
   function clearAll(){
     token++;
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
-    urls = []; results = []; stubs.innerHTML = "";
+    urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
     baseRatio = null;
     shBtn.textContent = "Save";
@@ -1033,6 +1187,13 @@
     paintEditor(); layoutFrame();
   });
 
+  /* levels the tilt alone; Reset clears everything else too */
+  $("tiltZero").addEventListener("click", function(){
+    if (!cFree) return;
+    cFree = 0; $("tilt").value = 0;
+    paintEditor(); layoutFrame();
+  });
+
   $("cropReset").addEventListener("click", function(){
     cRot = 0; cFH = false; cFV = false; cFree = 0; ratioVal = 0;
     $("flipH").setAttribute("aria-pressed", "false");
@@ -1133,9 +1294,10 @@
   });
 
   shBtn.addEventListener("click", async function(){
-    if (!results.length) return;
-    if (navigator.canShare && navigator.canShare({ files: results })){
-      try { await navigator.share({ files: results }); return; }
+    var files = readyFiles();
+    if (!files.length) return;
+    if (navigator.canShare && navigator.canShare({ files: files })){
+      try { await navigator.share({ files: files }); return; }
       catch (e){ if (e && e.name === "AbortError") return; }
     }
     setStatus("Sharing is unavailable here.", true);
