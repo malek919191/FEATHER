@@ -403,8 +403,6 @@
      from cache. Loading an address the phone has never seen forces a real
      download, which is the only thing that reliably brings the update in. */
   $("reload").addEventListener("click", function(){
-    if (sourceFiles.length &&
-        !confirm("Updating reloads the app and clears the photos you picked. Continue?")) return;
     location.replace(location.href.replace(/[?#].*$/, "") + "?u=" + Date.now());
   });
 
