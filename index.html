@@ -259,7 +259,7 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.6.3</span>
+      <span class="ver">v1.6.4</span>
       <button class="refresh" id="reload" type="button">↻ Update</button>
     </span>
   </header>
@@ -1110,8 +1110,10 @@
   /* Press and hold a photo and it grows to twice its size under the finger, then walks
      through what the compression did: the compressed photo first, the original in the
      middle as the reference, then back to the compressed one, which stays until the
-     finger lifts — so the last thing seen is the one that will be saved. */
-  var HOLD = 450, BEAT = 750;
+     finger lifts — so the last thing seen is the one that will be saved.
+     The original gets the longer beat: it is the one being read for detail, while the
+     compressed one is already familiar from the card. */
+  var HOLD = 450, BEAT = 750, LOOK = 1500;
 
   function wirePeek(el){
     var shot = el.querySelector(".shot");
@@ -1176,7 +1178,7 @@
           beat = 0;
           whenOrigReady(function(){
             show(true);
-            beat = setTimeout(function(){ beat = 0; show(false); }, BEAT);
+            beat = setTimeout(function(){ beat = 0; show(false); }, LOOK);
           });
         }, BEAT);
       }, HOLD);

@@ -18,7 +18,7 @@ It is designed as a mini PWA for mobile, particularly iOS — see the `apple-mob
 6. **Built-in cropper**: crop with preset or free ratios, 90° rotation, horizontal/vertical flip, free tilt (−90°…90°, with a triangle button that levels the tilt alone), a rule-of-thirds grid, and drag grips that work with both touch and mouse.
 7. **Before/after compare viewer**: a drag slider comparing the original against the compressed result, showing dimensions and byte size for each. Changing sharpness here re-encodes that photo at its real output size, so the figures shown are the ones that will save.
 8. **Sharing** via `navigator.share` (Web Share API) — opens the iOS share sheet so the user can save to Photos or Files.
-9. **Press and hold a photo in the list**: it is magnified 2x, anchored under the finger and dragged 1:1 with it, and steps through compressed → original → compressed (three quarters of a second each for the first two), with a tag naming whichever is showing. Lifting the finger restores the card in one frame. The photos themselves are `pointer-events:none` so the press lands on `.shot` instead — an image under the touch is what makes iOS open its own full-screen preview over the app.
+9. **Press and hold a photo in the list**: it is magnified 2x, anchored under the finger and dragged 1:1 with it, and steps through compressed → original → compressed (three quarters of a second, then a second and a half), with a tag naming whichever is showing. Lifting the finger restores the card in one frame. The photos themselves are `pointer-events:none` so the press lands on `.shot` instead — an image under the touch is what makes iOS open its own full-screen preview over the app.
 
 ### Processing pipeline
 
@@ -63,7 +63,7 @@ v2.7  →  cosmetic tweak       →  v2.7.1
 
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
-The current version in `index.html` is **`v1.6.3`**.
+The current version in `index.html` is **`v1.6.4`**.
 
 ## Git workflow and release history
 
