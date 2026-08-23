@@ -294,7 +294,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.8</span>
+      <span class="ver">v1.9</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -710,19 +710,26 @@
   }
 
   pickBtn.addEventListener("click", function(){ picker.click(); });
+  /* the picker's own work, given a name so a single line can sit in front of it */
+  function acceptFiles(files){
+    if (!files || !files.length) return;
+    sourceFiles = files;
+    edits = sourceFiles.map(function(){ return null; });
+    sharps = sourceFiles.map(function(){ return null; });
+    baseRatio = null; customW = null; customH = null;
+    cwEl.value = ""; chEl.value = "";
+    setFormatFromFiles();
+    readBaseRatio().then(function(){
+      if (customMode) seedCustom();
+      refreshGate();
+      rerender();
+    });
+  }
+
   picker.addEventListener("change", function(){
     if (picker.files && picker.files.length){
-      sourceFiles = Array.prototype.slice.call(picker.files);
-      edits = sourceFiles.map(function(){ return null; });
-      sharps = sourceFiles.map(function(){ return null; });
-      baseRatio = null; customW = null; customH = null;
-      cwEl.value = ""; chEl.value = "";
-      setFormatFromFiles();
-      readBaseRatio().then(function(){
-        if (customMode) seedCustom();
-        refreshGate();
-        rerender();
-      });
+      var picked = Array.prototype.slice.call(picker.files);
+      pdfInDoor(picked, acceptFiles);   // PDF IN — on removal, replace this line with:  acceptFiles(picked);
     }
     picker.value = "";
   });
@@ -1768,6 +1775,113 @@
     }
     setStatus("errShare", true);
   });
+
+  // ===== PDF IN — start · everything between these markers is deletable =====
+  /* Reading PDF files is the only part of FEATHER that leans on code we did not
+     write. It is fenced so that it can be taken out at any point in the future,
+     in minutes, however many versions have been built on top of it:
+
+       1. delete the folder vendor/
+       2. delete everything between these two markers
+       3. find the line marked "PDF IN — on removal" and do what it says there
+       4. grep -in "pdfin\|pdf_in" index.html must then come back empty
+
+     Nothing outside this block was altered to accommodate PDF. The picker's
+     accept attribute and the two status strings are widened from in here, at
+     run time, and the library has no script tag of its own — it is fetched the
+     first time a PDF is actually picked, so a user who only ever opens photos
+     never downloads it. cMapUrl and standardFontDataUrl are deliberately left
+     unset: with no URL to fetch from, the library makes no network request, and
+     nothing leaves the phone. The full contract is in CLAUDE.md. */
+
+  var PDF_IN = true;            // false switches PDF reading off entirely
+
+  var PDF_IN_MAXPX = 2200;      // longest side a rendered page is given
+  var PDF_IN_MAXPAGES = 30;     // guard against a hundred-page document
+  var pdfInLib = null, pdfInRun = 0;
+
+  if (PDF_IN){
+    picker.setAttribute("accept", picker.getAttribute("accept") + ",application/pdf");
+
+    STR.en.pdfInWait = "Opening the PDF\u2026";
+    STR.en.pdfInPage = "Reading page {1} of {2}\u2026";
+    STR.en.pdfInFail = "Could not read that PDF. It may be protected, or hold no pages.";
+    STR.ar.pdfInWait = "جاري فتح الملف\u2026";
+    STR.ar.pdfInPage = "جاري قراءة الصفحة {1} من {2}\u2026";
+    STR.ar.pdfInFail = "تعذرت قراءة هذا الملف. قد يكون محمياً أو خالياً من الصفحات.";
+  }
+
+  function pdfInIs(f){
+    return !!f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name || ""));
+  }
+
+  /* the door: files in, images out. Anything that is not a PDF passes straight
+     through untouched, so the rest of the app never learns that PDF exists. */
+  function pdfInDoor(files, done){
+    if (!PDF_IN || !files.some(pdfInIs)){ done(files); return; }
+    pdfInOpen(files, done);
+  }
+
+  function pdfInLoad(){
+    if (pdfInLib) return pdfInLib;
+    pdfInLib = new Promise(function(res, rej){
+      var s = document.createElement("script");
+      s.src = "vendor/pdf.min.js";
+      s.onload = function(){
+        var L = window.pdfjsLib;
+        if (!L){ pdfInLib = null; rej(new Error("pdf")); return; }
+        L.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker.min.js";
+        res(L);
+      };
+      s.onerror = function(){ pdfInLib = null; rej(new Error("pdf")); };
+      document.head.appendChild(s);
+    });
+    return pdfInLib;
+  }
+
+  /* one page becomes one photo. Failures are caught here and reported in both
+     languages; images picked alongside a broken PDF still go through. */
+  async function pdfInOpen(files, done){
+    var mine = ++pdfInRun, out = [], L, i;
+    setStatus("pdfInWait");
+    try { L = await pdfInLoad(); }
+    catch (e){ setStatus("pdfInFail", true); return; }
+    if (mine !== pdfInRun) return;
+
+    for (i = 0; i < files.length; i++){
+      if (mine !== pdfInRun) return;
+      if (!pdfInIs(files[i])){ out.push(files[i]); continue; }
+      try { await pdfInPages(L, files[i], out, mine); } catch (e){}
+    }
+    if (mine !== pdfInRun) return;
+    if (!out.length){ setStatus("pdfInFail", true); return; }
+    setStatus("");
+    done(out);
+  }
+
+  async function pdfInPages(L, file, out, mine){
+    var buf = await file.arrayBuffer();
+    var doc = await L.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
+    try {
+      var n = Math.min(doc.numPages, PDF_IN_MAXPAGES);
+      var base = (file.name || "pdf").replace(/\.pdf$/i, "");
+      for (var p = 1; p <= n; p++){
+        if (mine !== pdfInRun) return;
+        setStatus("pdfInPage", false, [p, n]);
+        var page = await doc.getPage(p), c = null;
+        try {
+          var v1 = page.getViewport({ scale: 1 });
+          var k = Math.min(PDF_IN_MAXPX / Math.max(v1.width, v1.height), 4);
+          var vp = page.getViewport({ scale: k });
+          c = canvasOf(Math.max(1, Math.round(vp.width)), Math.max(1, Math.round(vp.height)));
+          await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+          var b = await toBlob(c, "image/jpeg", 0.95);
+          out.push(new File([b], base + "-" + p + ".jpg", { type: "image/jpeg" }));
+        } finally { page.cleanup(); kill(c); }
+      }
+    } finally { await doc.destroy(); }
+  }
+  // ===== PDF IN — end =====
 
   applyLang();
 })();

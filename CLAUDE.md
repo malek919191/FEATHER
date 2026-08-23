@@ -47,9 +47,12 @@ It is designed as a mini PWA for mobile, particularly iOS — see the `apple-mob
 8. **Sharing** via `navigator.share` (Web Share API) — opens the iOS share sheet so the user can save to Photos or Files.
 9. **Press and hold a photo in the list**: it is magnified 2x, anchored under the finger and dragged 1:1 with it, and steps through compressed → original → compressed (three quarters of a second, then a second and a half), with a tag naming whichever is showing. Lifting the finger restores the card in one frame. The photos themselves are `pointer-events:none` so the press lands on `.shot` instead — an image under the touch is what makes iOS open its own full-screen preview over the app.
 10. **PDF output**: a full-width `Save PDF` button beneath `Choose Photos` and `Save`, enabled with them. It wraps the results into one PDF, a page per photo at 150dpi, and opens the share sheet. A JPEG result is embedded byte for byte via `/DCTDecode`, so the page holds exactly the file shown on screen and nothing is compressed twice; a PNG result is encoded to JPEG for the document only, leaving the saved PNG untouched. The writer (`pdfOutBuild`) is ours — no library — and is not part of the isolation contract below.
-11. **Language**: a two-part toggle beneath the app name switches the whole interface between English and Arabic, and the choice is kept in `localStorage` under `fw-lang` so the app reopens in it. Every visible string lives in the `STR` object and is written into the `data-t` / `data-tp` / `data-ta` marks in the markup by `applyLang()`; a switch touches text only and never re-runs the pipeline, so results already on screen keep their exact bytes. `setStatus()` therefore stores a key rather than finished text, and `paintStatus()` / `paintSave()` repaint whatever is showing. Arabic letters join up, so `body.ar` lifts the monospace face and the letter-spacing from the labels and gives the running text its own `direction:rtl`; the layout itself is not mirrored.
+11. **PDF input**: the picker also accepts PDF files. Each page is rendered to an image and enters the list as its own photo card, so a five-page document becomes five photos, each with its own crop, sharpness and size. It works on any PDF, not only scans — a page of text or a signature is rendered exactly as it appears. Capped at 30 pages per file, 2200px on the longest side. All of it lives in the fenced block governed by the isolation contract below.
+12. **Language**: a two-part toggle beneath the app name switches the whole interface between English and Arabic, and the choice is kept in `localStorage` under `fw-lang` so the app reopens in it. Every visible string lives in the `STR` object and is written into the `data-t` / `data-tp` / `data-ta` marks in the markup by `applyLang()`; a switch touches text only and never re-runs the pipeline, so results already on screen keep their exact bytes. `setStatus()` therefore stores a key rather than finished text, and `paintStatus()` / `paintSave()` repaint whatever is showing. Arabic letters join up, so `body.ar` lifts the monospace face and the letter-spacing from the labels and gives the running text its own `direction:rtl`; the layout itself is not mirrored.
 
 ### Processing pipeline
+
+Before any of it, `acceptFiles()` receives whatever the picker handed over; PDF pages have already become ordinary image files by then (see the isolation contract), so the pipeline itself only ever sees images.
 
 `decode()` (`createImageBitmap`, falling back to `<img>`) → `cropAndOrient()` (applies crop + rotation + flip with exact coordinate-space transforms) → `stepDown()` (progressive halving rather than a single downscale, to avoid aliasing) → `sharpen()` (a simple unsharp mask via hand-rolled convolution over `ImageData`, skipped entirely at 0) → `toBlob()` for final encoding.
 
@@ -154,8 +157,9 @@ Reading PDF files is the only part of FEATHER that leans on code we did not writ
 
 `git revert` is explicitly **not** the removal plan. By the time removal is wanted, dozens of features will sit above that commit and a revert would collide with all of them — the user said so himself, and he is right. History is not the guarantee; **construction is**. What follows is that construction. These are binding rules, not style preferences.
 
-**Status:** not yet implemented. The contract was written and agreed first; the code lands underneath it, never the other way round.
-**Recipe last verified against:** — (fill in with the version, every time the block is touched).
+**Status:** implemented in v1.9, under a contract written and agreed first.
+**Recipe last verified against:** v1.9. Re-verify and update this line every time the block is touched.
+**Library:** pdf.js 3.11.174, legacy build, from the npm package `pdfjs-dist`, vendored unmodified in `vendor/`.
 
 ### 1. One door
 
