@@ -149,17 +149,18 @@ This has hard consequences for every change shipped:
 
 ## PDF: the isolation contract
 
-Reading PDF files is the only part of FEATHER that leans on code we did not write — the `pdf.js` library, vendored beside `index.html`. The user accepted it on one condition, agreed in full before a single line was added: **it must stay removable at any point in the future, in minutes, no matter how many versions have been built on top of it.**
+Reading PDF files is the only part of FEATHER that leans on code we did not write — the `pdf.js` library, vendored inside the repository. The user accepted it on one condition, agreed in full before a single line was written: **it must stay removable at any point in the future, in minutes, with no thinking required, no matter how many versions have been built on top of it.**
 
-`git revert` is explicitly **not** the removal plan. By the time removal is wanted, dozens of features will sit above that commit and a revert would collide with all of them — the user said so himself, and he is right. Removal stays cheap only by construction. What follows is that construction. These are binding rules, not style preferences.
+`git revert` is explicitly **not** the removal plan. By the time removal is wanted, dozens of features will sit above that commit and a revert would collide with all of them — the user said so himself, and he is right. History is not the guarantee; **construction is**. What follows is that construction. These are binding rules, not style preferences.
 
-**Status:** the contract was written and agreed before the implementation. The code lands underneath it, never the other way round.
+**Status:** not yet implemented. The contract was written and agreed first; the code lands underneath it, never the other way round.
+**Recipe last verified against:** — (fill in with the version, every time the block is touched).
 
 ### 1. One door
 
-Images enter FEATHER at exactly one place — the file picker, where the chosen files become `sourceFiles`. PDF gets a single function at that point: a door that receives the picked files and hands back ordinary image blobs. Everything downstream — `decode`, `cropAndOrient`, `stepDown`, `sharpen`, the cropper, the compare viewer, sharing, the language layer — sees images and only images, and must never learn that PDF exists.
+Images enter FEATHER at exactly one place: the file picker, where the chosen files become `sourceFiles`. PDF gets a single function there — a door that receives the picked files and hands back ordinary image blobs. Everything downstream — `decode`, `cropAndOrient`, `stepDown`, `sharpen`, the cropper, the compare viewer, sharing, the language layer — sees images and only images, and must never learn that PDF exists.
 
-### 2. One fenced block
+### 2. One fenced block, at the end of the script
 
 Every line of PDF code lives inside one contiguous block, between these two markers and nowhere else:
 
@@ -168,45 +169,133 @@ Every line of PDF code lives inside one contiguous block, between these two mark
 // ===== PDF IN — end =====
 ```
 
-The markers are permanent. They are how the block is found years from now, by someone who has never read this file.
+The block sits **at the very end of the script**, after all other code, so nothing of ours ever grows inside it and the deletable range stays one unbroken run of lines. The markers are permanent, and they are how the block is found years from now by someone who has never read this file.
 
-### 3. One kill switch
+The full removal recipe is repeated **as a comment directly above the opening marker**, so the instructions live next to the thing they describe and cannot drift away from it.
+
+### 3. One kill switch, inside the block
 
 ```
 var PDF_IN = true;   // false switches PDF reading off entirely
 ```
 
-Setting it to `false` must always be enough to turn the feature off completely: the picker goes back to images only, the door stays shut, and nothing else in the app changes. If a change would make that untrue, the change is wrong.
+It is declared **inside** the block, at its top — never above it — so it has no separate existence to clean up. Setting it to `false` must always be enough to turn the feature off completely: the picker goes back to images only, the door stays shut, nothing else in the app changes. If a change would make that untrue, the change is wrong.
 
-### 4. Forbidden, always
+### 4. The block reaches out; nothing reaches in
+
+The rest of `index.html` must never be edited to accommodate PDF. Where the feature needs something outside itself, the block does it **at runtime, from inside**:
+
+- **The picker's `accept`.** The markup keeps `accept="image/*"` unchanged, forever. When it runs, the block widens the attribute itself to also accept PDF. Delete the block and the picker is back to images with nothing to restore.
+- **The status strings.** They are not typed into the `STR` object next to the app's own strings. The block adds its own keys to `STR.en` and `STR.ar` when it runs. Delete the block and they go with it. Every key it adds is named with a `pdfIn` prefix.
+- **The library itself.** There is no `<script>` tag for it in the markup. The block injects the script at runtime, the first time a PDF is actually picked, and remembers that it did. This keeps the head clean, keeps the audit in section 6 exhaustive, and means a user who never opens a PDF never downloads the megabyte at all. With `PDF_IN` set to `false` the library is never fetched.
+- **Naming.** Every function, variable, and key this feature introduces begins with `pdfIn` — or `PDF_IN` for the switch. Never a bare `pdf`, which belongs to PDF output (see the last section). This is what makes the audit in section 6 exhaustive rather than hopeful.
+
+The single exception is the one call, in section 5.
+
+### 5. Exactly one line outside the block
+
+Reading a PDF is asynchronous — pages have to be rendered — so the door cannot simply return files the way a synchronous call would. It therefore takes the picked files **and** the function that consumes them, and calls it when the images are ready. When there is no PDF among the files, or `PDF_IN` is `false`, it passes them straight through untouched.
+
+That keeps the intrusion to one line at the file picker, carrying on it both its marker and its own replacement text:
+
+```
+pdfInDoor(picked, acceptFiles);   // PDF IN — on removal, replace this line with:  acceptFiles(picked);
+```
+
+That is the **only** line of PDF anywhere outside the fenced block. There is never a second one.
+
+**One permanent refactor comes with it, and it is not PDF code.** The body of the picker's `change` handler moves into a plain function, `acceptFiles(files)`. It contains no PDF, mentions no PDF, and **stays in the app after removal** — it is simply the app's own code, given a name. It is listed here so a future reader knows it is not part of the feature and must not be deleted with it.
+
+### 6. The audit — how erosion is detected
+
+A written rule that nobody checks is a rule that rots. This one is checkable in a single command:
+
+```
+grep -in "pdfin\|pdf_in" index.html
+```
+
+**Every hit must fall inside the fenced block, or be the one marked call line in section 5. A hit anywhere else means the isolation is broken.**
+
+The search is for `pdfIn` / `PDF_IN`, not for the bare word `pdf`, because PDF *output* is a separate feature of our own that legitimately uses `pdf` throughout and would drown the result. That naming split (rule 4) is what keeps this audit exact. A second, softer look —
+
+```
+grep -in "pdf" index.html
+```
+
+— should show nothing except PDF output and the hits above; anything else is a stray that needs a home.
+
+This runs **before every commit that touches `index.html`**, not only when working on PDF. A hit outside those two places stops the commit until it is moved back inside the block. No exceptions, no "just this once" — that is precisely how the hundredth update ends up tangled.
+
+### 7. Forbidden, always
 
 - PDF logic anywhere outside the fenced block.
 - Any downstream function branching on "did this come from a PDF".
 - Any state, flag, or field recording a photo's PDF origin that is read outside the block.
 - Editing the vendored library. It is frozen at the committed version — never patched, never silently updated.
-- Letting a PDF failure take anything else down: the block catches its own errors and reports them in both languages, and images keep working.
+- Letting a PDF failure take anything else down: the block catches its own errors, reports them in both languages, and images keep working.
 
-### 5. The duty to warn
+### 8. The duty to warn
 
 If a future feature cannot be built without breaking this isolation, **say so in the chat before building it** — name exactly what it breaks and what removal will cost afterwards — and let the user decide. Never quietly weaken the isolation because it makes a feature easier to write.
 
-### 6. The removal recipe
+### 9. What PDF reading physically consists of
 
-Kept current with every release that touches this area. To remove PDF reading completely:
+The complete inventory. Nothing else in the repository belongs to this feature:
 
-1. Delete everything between the `PDF IN` markers in `index.html`.
-2. Delete the `PDF_IN` switch line.
-3. Delete the single call to the door at the file picker.
-4. Restore the picker's attribute to `accept="image/*"`.
-5. Delete the PDF status strings from `STR` — both languages.
-6. Delete the vendored library file from the repository.
-7. Bump the version and commit forward. Never revert history.
+| # | What | Where | How to find it |
+|---|---|---|---|
+| 1 | The vendored library, and its licence file | `vendor/` | The folder holds nothing else |
+| 2 | All our PDF code, including `PDF_IN` | `index.html`, end of the script | Search for `PDF IN — start` |
+| 3 | The single call to the door | `index.html`, at the file picker | Search for `PDF IN — on removal` |
 
-Nothing else in `index.html` may refer to PDF. **The day steps 1–6 stop being the whole list, rules 1–4 have been broken and the file must be brought back into line before anything else ships.**
+Deliberately **not** by line number: line numbers drift with every release and would send a future reader to the wrong place. Search strings do not drift.
+
+Not in this inventory, and therefore not part of the feature: `acceptFiles` (section 5), the picker's `accept` attribute, and everything belonging to PDF output.
+
+### 10. The removal recipe
+
+Two deletions and one one-line replacement, in any order. Nothing here is "work out what used to be there and put it back", because rule 4 means the app was never altered to accommodate PDF — and the one line that is not a deletion carries its own replacement text written on it.
+
+1. Delete the folder `vendor/`. There is no `<script>` tag to remove — the block loaded the library itself.
+2. Delete everything from `// ===== PDF IN — start` to `// ===== PDF IN — end` inclusive, in `index.html`.
+3. Find the line marked `// PDF IN — on removal, replace this line with:` and do exactly what it says — the replacement is spelled out on the line itself.
+
+Then:
+
+4. Run `grep -in "pdfin\|pdf_in" index.html`. It must return **nothing at all**. Any remaining hit is code written in violation of this contract, and it has to go too.
+5. Bump the version and commit forward. Never revert history.
+
+**`grep -in "pdf"` will still return hits after a correct removal, and that is right, not a mistake.** Those hits are PDF output, a different feature. Deleting them would break the app. Step 4 searches for `pdfIn` / `PDF_IN` precisely so the two are never confused.
+
+**Do not delete these** — they are the app's own, and PDF only borrowed them:
+
+- `accept="image/*"` on the picker. It was never changed, and it must stay.
+- `acceptFiles`, and `sourceFiles`, and everything that reads them.
+- The `STR` object and every string in it that has no `pdfIn` prefix.
+- **PDF output** — every `pdfOut…` name, its button, and its strings. See the section below. It is unrelated to any of this and survives removal untouched.
+
+### 11. Verifying after removal
+
+The point of this contract is that the app is *unaffected*. Confirm it on the phone, in this order — all of it must behave exactly as before:
+
+1. Choose two photos. Both appear and compress.
+2. Crop one, rotate it, tilt it. The preview follows.
+3. Open the compare viewer and drag the slider. Both figures show.
+4. Move the sharpness slider. The photo re-encodes.
+5. Share a result. The iOS sheet opens.
+6. Switch the language both ways. Every label changes and no result is lost.
+
+If all six pass, removal is clean.
+
+### 12. When this contract has been broken
+
+**The day the recipe in section 10 stops being the whole list, rules 1–7 have been broken.** Do not work around it and do not extend the recipe to cover the mess. Bring the file back into line first — move the stray code back inside the block until `grep -in "pdfin\|pdf_in" index.html` is clean again — and only then ship anything else.
 
 ### Not covered by any of this
 
-**PDF output** — building a PDF out of already-compressed images — is our own code: no library, no dependency, no foreign anything. It is an ordinary feature of the app, removable like any other, and none of the rules above apply to it.
+**PDF output** — building a PDF out of already-compressed images — is our own code: no library, no dependency, no foreign anything. It is an ordinary feature of the app, removable like any other, and none of the rules above apply to it. It does not live in the fenced block, and it survives the removal recipe untouched.
+
+To keep the two from ever being confused, its own names carry a `pdfOut` prefix — matching the `pdfIn` prefix that marks the removable side. The prefixes are the whole reason a single `grep` can tell them apart years from now.
 
 ## Communicating with the user
 
