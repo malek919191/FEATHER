@@ -259,7 +259,7 @@
     <h1>FEATHERWEIGHT</h1>
     <span class="meta-right">
       <span class="form-no">on-device</span>
-      <span class="ver">v1.6.5</span>
+      <span class="ver">v1.7</span>
       <button class="refresh" id="reload" type="button">↻ Update</button>
     </span>
   </header>
@@ -824,8 +824,42 @@
            '</svg></button>';
   }
 
+  /* the editor and the compare view cover the whole screen; the page beneath is
+     frozen where it stands so closing them lands back on the same photo */
+  var lockY = 0, locks = 0;
+  function lockPage(){
+    if (locks++) return;
+    lockY = window.pageYOffset || document.documentElement.scrollTop || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = (-lockY) + "px";
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+  }
+  function unlockPage(){
+    if (!locks || --locks) return;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    window.scrollTo(0, lockY);
+  }
+
+  /* rebuilding the list empties it first, which would drop the page to the top;
+     the old height is held until the cards are back, then the scroll is restored */
+  function holdScroll(){
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    stubs.style.minHeight = stubs.offsetHeight + "px";
+    return function(){
+      stubs.style.minHeight = "";
+      window.scrollTo(0, y);
+    };
+  }
+
   async function showOriginals(){
     var mine = ++token;
+    var back = holdScroll();
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
     urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
@@ -860,6 +894,7 @@
       stubs.appendChild(el);
     }
     refreshGate();
+    back();
   }
 
   async function run(){
@@ -867,6 +902,7 @@
     var mine = ++token;
     if (busy) return;
     busy = true;
+    var back = holdScroll();
 
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
     urls = []; results = []; stubEls = []; stubs.innerHTML = "";
@@ -897,8 +933,9 @@
     if (mine !== token){ rerender(); return; }
 
     var done = readyFiles();
-    if (!done.length){ setStatus("Could not read those files. Try picking from your photo library.", true); return; }
+    if (!done.length){ back(); setStatus("Could not read those files. Try picking from your photo library.", true); return; }
     setStatus("");
+    back();
     $("tOld").textContent = fmt(tOld);
     $("tNew").textContent = fmt(tNew);
     totalBox.classList.remove("hidden");
@@ -1009,6 +1046,7 @@
     $("capNewDim").textContent  = r.w + "\u00D7" + r.h;
     $("capNewSize").textContent = fmt(newSize);
     $("oneSharp").value = effSharp(idx);
+    lockPage();
     viewer.classList.remove("hidden");
     fitStage(r);
   }
@@ -1087,6 +1125,7 @@
 
   $("closeBtn").addEventListener("click", function(){
     viewer.classList.add("hidden");
+    unlockPage();
     imgOld.removeAttribute("src"); imgNew.removeAttribute("src");
   });
 
@@ -1265,6 +1304,7 @@
       fw = e.sw * viewK; fh = e.sh * viewK;
     } else resetFrame();
     layoutFrame();
+    lockPage();
     cropper.classList.remove("hidden");
   }
 
@@ -1447,6 +1487,7 @@
 
   function closeEditor(){
     cropper.classList.add("hidden");
+    unlockPage();
     release(cBmp);
     cBmp = null;
   }
