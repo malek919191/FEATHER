@@ -311,7 +311,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.12</span>
+      <span class="ver">v1.12.1</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -1570,6 +1570,10 @@
   async function removeAt(idx){
     if (idx < 0 || idx >= sourceFiles.length) return;
     sourceFiles.splice(idx, 1);
+    /* the name lists are indexed the same way, so they have to lose the same
+       slot — otherwise every card below the deleted one inherits its name */
+    srcBase.splice(idx, 1);
+    outBase.splice(idx, 1);
     edits.splice(idx, 1);
     sharps.splice(idx, 1);
     stubEls.splice(idx, 1);
