@@ -42,6 +42,24 @@
     letter-spacing:.08em;text-transform:uppercase}
   .ver{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-soft);
     letter-spacing:.08em;margin-top:3px;opacity:.75}
+  .refresh{appearance:none;-webkit-appearance:none;cursor:pointer;
+    display:inline-block;margin-top:7px;background:#FDFCF8;color:var(--ink-soft);
+    border:1px solid var(--rule);border-radius:9px;padding:3px 8px 4px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;line-height:1.2;
+    text-transform:uppercase;transition:background .15s,border-color .15s,color .15s}
+  .refresh:active,.refresh.tapped{background:#16212B;border-color:#16212B;color:#FFFFFF}
+  .refresh.tapped{transition:none}
+  /* the column takes the width of its widest child, which is the title, so the
+     toggle beneath it ends exactly where the last T does; the negative margin
+     trims the letter-spacing the title trails after that T */
+  .head-left{flex:0 1 auto;min-width:0}
+  .head-left h1{margin-right:-.14em}
+  .lang{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:11px;width:100%}
+  .langBtn{appearance:none;-webkit-appearance:none;background:#FDFCF8;cursor:pointer;
+    border:1px solid var(--rule);border-radius:11px;padding:11px 4px;
+    color:#16212B;font-family:var(--sans);font-size:13px;font-weight:650;line-height:1.15;
+    transition:background .15s,border-color .15s,color .15s}
+  .langBtn[aria-pressed="true"]{background:#16212B;border-color:#16212B;color:#FFFFFF}
   .label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
     text-transform:uppercase;margin-bottom:7px}
   .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:18px}
@@ -49,6 +67,7 @@
   .row6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}
   .opt{appearance:none;-webkit-appearance:none;background:#FDFCF8;cursor:pointer;
     border:1px solid var(--rule);border-radius:var(--r);padding:10px 2px 9px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;color:#16212B;font-family:var(--sans);
     font-size:12px;font-weight:650;line-height:1.15;transition:background .15s,border-color .15s,opacity .15s}
   .opt small{display:block;font-family:var(--mono);font-size:9px;font-weight:400;
@@ -98,8 +117,26 @@
   .stub .nums .arrow{color:var(--ink-soft);padding:0 6px}
   .stub .nums .new{font-weight:650}
   .stub .dim{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-top:3px;padding-right:70px}
-  .stub .shot{display:block;width:100%;background:#EFEEE8;cursor:pointer;position:relative}
-  .stub .shot img{display:block;width:100%;height:auto}
+  .stub .shot{display:block;width:100%;background:#EFEEE8;cursor:pointer;position:relative;
+    overflow:hidden;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  /* the finger must land on the frame, never on the photo itself: an image under the
+     touch is what makes iOS open its own full-screen preview over the app */
+  .stub .shot img{display:block;width:100%;height:auto;pointer-events:none;
+    -webkit-touch-callout:none;-webkit-user-drag:none;user-select:none}
+  /* both versions sit magnified under the shot; the hold shows one at a time */
+  .stub .shot img.peek{position:absolute;top:0;left:0;right:0;bottom:0;
+    width:100%;height:100%;object-fit:cover;z-index:1;display:none;
+    transform:scale(2);transform-origin:50% 50%}
+  .stub .shot.peeking img.pNew{display:block}
+  .stub .shot.peeking.orig img.pNew{display:none}
+  .stub .shot.peeking.orig img.pOrig{display:block}
+  .stub .shot.peeking .editBtn{opacity:0}
+  /* the same tag the compare viewer puts on its original, so the word reads alike in both places */
+  .peekTag{position:absolute;top:10px;right:12px;z-index:3;display:none;
+    font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    background:rgba(10,16,22,.62);color:#FFFFFF;padding:3px 8px;border-radius:6px;
+    pointer-events:none}
+  .stub .shot.peeking .peekTag{display:block}
   .editBtn{position:absolute;top:10px;right:10px;width:38px;height:38px;
     border:none;border-radius:11px;background:rgba(10,16,22,.58);cursor:pointer;
     display:flex;align-items:center;justify-content:center;-webkit-appearance:none;z-index:2}
@@ -130,10 +167,10 @@
     flex-direction:column;align-items:center;justify-content:center;
     padding:calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px)}
   #stage{position:relative;overflow:hidden;border-radius:var(--r);
-    background:#FFFFFF;max-width:100%;max-height:76vh}
+    background:#FFFFFF;flex:0 0 auto}
   #stage .pane{position:absolute;inset:0;overflow:hidden}
   #stage .pane img{position:absolute;top:0;left:0;width:100%;height:100%;
-    object-fit:fill;-webkit-user-select:none;user-select:none;pointer-events:none}
+    object-fit:cover;-webkit-user-select:none;user-select:none;pointer-events:none}
   #paneNew{clip-path:inset(0 0 0 var(--split))}
   #handle{position:absolute;top:0;bottom:0;left:var(--split);width:22px;
     margin-left:-11px;touch-action:none;cursor:ew-resize;z-index:3}
@@ -223,6 +260,22 @@
   .applyRow button{width:calc(50% - 4px)}
   #cropCancel, #cropReset{background:transparent;border:1px solid #46586A;color:#DCE6EE}
   #cropApply{background:#FFFFFF;border:none;color:#16212B}
+  /* Arabic letters join up, so the monospace face and the wide letter-spacing
+     that suit the English labels pull them apart and have to lift; a whole
+     Arabic sentence also needs its own paragraph direction, or the closing
+     full stop is laid out at the wrong end of the line */
+  body.ar .label, body.ar .form-no, body.ar .refresh, body.ar .fieldwrap span,
+  body.ar .opt small, body.ar .sub, body.ar .status,
+  body.ar .tags, body.ar .peekTag, body.ar #viewSharp .vLabel{
+    font-family:var(--sans);letter-spacing:0;text-transform:none}
+  body.ar .label{font-size:12px}
+  body.ar .form-no, body.ar .refresh, body.ar .fieldwrap span{font-size:11px}
+  body.ar .opt small{font-size:9.5px}
+  body.ar .sub{font-size:11.5px}
+  body.ar .status{font-size:12.5px}
+  body.ar .tags, body.ar .peekTag, body.ar #viewSharp .vLabel{font-size:10.5px}
+  body.ar .hint, body.ar .sub, body.ar .status{direction:rtl}
+  body.ar .hint{text-align:right}
   @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 </head>
@@ -231,70 +284,79 @@
 
   <div class="byline">Malek Barbari</div>
   <header>
-    <h1>FEATHERWEIGHT</h1>
+    <div class="head-left">
+      <h1>FEATHERWEIGHT</h1>
+      <div class="lang" id="lang">
+        <button class="langBtn" type="button" data-l="en" aria-pressed="true">English</button>
+        <button class="langBtn" type="button" data-l="ar" aria-pressed="false">عربي</button>
+      </div>
+    </div>
     <span class="meta-right">
-      <span class="form-no">on-device</span>
-      <span class="ver">v1.3</span>
+      <span class="form-no" data-t="onDevice">On-Device</span>
+      <span class="ver">v1.7.1</span>
+      <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
 
-  <div class="label">Format</div>
+  <div class="label" data-t="lFormat">Format</div>
   <div class="row3" id="formats">
-    <button class="opt" data-f="src" aria-pressed="true">Source<small>orig</small></button>
-    <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG<small>lossy</small></button>
-    <button class="opt" data-f="image/png" aria-pressed="false">PNG<small>lossless</small></button>
+    <button class="opt" data-f="src" aria-pressed="true" data-t="fSource">Source<small data-t="sOrig">Orig</small></button>
+    <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG</button>
+    <button class="opt" data-f="image/png" aria-pressed="false">PNG</button>
   </div>
 
-  <div class="label">Longest side</div>
+  <div class="label" data-t="lLongest">Longest Side</div>
   <div class="row6" id="scales">
-    <button class="opt" data-w="0" aria-pressed="false">1:1<small>orig</small></button>
-    <button class="opt" data-w="900" aria-pressed="false">900<small>px</small></button>
-    <button class="opt" data-w="700" aria-pressed="false">700<small>px</small></button>
-    <button class="opt" data-w="500" aria-pressed="false">500<small>px</small></button>
-    <button class="opt" data-w="350" aria-pressed="false">350<small>px</small></button>
-    <button class="opt" data-w="custom" aria-pressed="false">Custom<small>px</small></button>
+    <button class="opt" data-w="0" aria-pressed="true">1:1<small data-t="sOrig">Orig</small></button>
+    <button class="opt" data-w="900" aria-pressed="false">900<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="700" aria-pressed="false">700<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="500" aria-pressed="false">500<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="350" aria-pressed="false">350<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="custom" aria-pressed="false" data-t="fCustom">Custom<small data-t="sPx">Px</small></button>
   </div>
   <div class="custom hidden" id="customRow">
-    <label class="fieldwrap"><span>W</span><input id="cw" type="number" inputmode="numeric" placeholder="width"></label>
-    <label class="fieldwrap"><span>H</span><input id="ch" type="number" inputmode="numeric" placeholder="height"></label>
+    <label class="fieldwrap"><span data-t="fW">W</span><input id="cw" type="number" inputmode="numeric" placeholder="Width" data-tp="pW"></label>
+    <label class="fieldwrap"><span data-t="fH">H</span><input id="ch" type="number" inputmode="numeric" placeholder="Height" data-tp="pH"></label>
   </div>
   <div class="spacer"></div>
 
   <div class="label" id="qLabel">Quality</div>
   <div class="row5" id="levels">
-    <button class="opt" data-q="0.90" aria-pressed="false">Highest<small>90</small></button>
-    <button class="opt" data-q="0.75" aria-pressed="false">High<small>75</small></button>
-    <button class="opt" data-q="0.60" aria-pressed="false">Med<small>60</small></button>
-    <button class="opt" data-q="0.45" aria-pressed="false">Low<small>45</small></button>
-    <button class="opt" data-q="0.30" aria-pressed="false">Least<small>30</small></button>
+    <button class="opt" data-q="0.90" aria-pressed="true" data-t="qHighest">Highest<small>90</small></button>
+    <button class="opt" data-q="0.75" aria-pressed="false" data-t="qHigh">High<small>75</small></button>
+    <button class="opt" data-q="0.60" aria-pressed="false" data-t="qMed">Med<small>60</small></button>
+    <button class="opt" data-q="0.45" aria-pressed="false" data-t="qLow">Low<small>45</small></button>
+    <button class="opt" data-q="0.30" aria-pressed="false" data-t="qLeast">Least<small>30</small></button>
   </div>
 
   <div class="spacer"></div>
 
-  <div class="label">Sharpness</div>
+  <div class="label" data-t="lSharp">Sharpness</div>
   <div class="sharpRow">
-    <input id="sharp" class="sharpBar" type="range" min="0" max="1" step="0.05" value="0" aria-label="Sharpness">
+    <input id="sharp" class="sharpBar" type="range" min="0" max="1" step="0.05" value="0" data-ta="lSharp" aria-label="Sharpness">
     <div class="ticks light"><i></i><i></i><i></i></div>
   </div>
 
   <input type="file" id="picker" accept="image/*" multiple>
   <div class="actions">
-    <button class="btn" id="pick">Choose photos</button>
+    <button class="btn" id="pick" data-t="bChoose">Choose Photos</button>
     <button class="btn ghost" id="share" disabled>Save</button>
   </div>
-  <p class="sub" id="sub">Pick a size and a quality to compress</p>
+  <p class="sub" id="sub" data-t="subHint">Enter a width and a height</p>
 
   <p class="status" id="status"></p>
   <div class="stubs" id="stubs"></div>
 
   <div class="total hidden" id="total">
-    <span>Total</span>
+    <span data-t="bTotal">Total</span>
     <span><span id="tOld"></span> &rarr; <b id="tNew"></b></span>
   </div>
 
-  <p class="hint">
+  <p class="hint" data-t="hint">
     Nothing leaves your phone. Tap the corner icon to crop, rotate, or flip. Tap the image to compare
-    it against the original. Save opens the share sheet: Save Image puts it in Photos, Save to Files
+    it against the original. Press and hold to inspect it up close: it is magnified
+    where your finger is, and flashes the original in the middle so you can see what
+    the compression took. Save opens the share sheet: Save Image puts it in Photos, Save to Files
     keeps the exact file shown here.
   </p>
 
@@ -305,7 +367,7 @@
   <div id="stage">
     <div class="pane" id="paneOld"><img id="imgOld" alt=""></div>
     <div class="pane" id="paneNew"><img id="imgNew" alt=""></div>
-    <div class="tags"><span>Original</span><span>Compressed</span></div>
+    <div class="tags"><span data-t="tOrig">Original</span><span data-t="tComp">Compressed</span></div>
     <div id="handle">
       <div class="bar"></div>
       <div class="tri top"></div>
@@ -318,13 +380,13 @@
     <div class="col"><div id="capNewDim"></div><div id="capNewSize"></div></div>
   </div>
   <div id="viewSharp">
-    <div class="vLabel">Sharpness &mdash; this photo</div>
+    <div class="vLabel" data-t="vSharp">Sharpness &mdash; This Photo</div>
     <div class="tiltWrap">
-      <input id="oneSharp" class="tilt" type="range" min="0" max="1" step="0.05" value="0" aria-label="Sharpness">
+      <input id="oneSharp" class="tilt" type="range" min="0" max="1" step="0.05" value="0" data-ta="lSharp" aria-label="Sharpness">
       <div class="ticks"><i></i><i></i><i></i></div>
     </div>
   </div>
-  <button id="closeBtn">Close</button>
+  <button id="closeBtn" data-t="bClose">Close</button>
 </div>
 
 <div id="cropper" class="hidden">
@@ -343,14 +405,14 @@
     </div>
     <div id="cropSize"></div>
     <div class="tiltWrap">
-      <input id="tilt" class="tilt" type="range" min="-90" max="90" step="1" value="0" aria-label="Tilt">
+      <input id="tilt" class="tilt" type="range" min="-90" max="90" step="1" value="0" data-ta="aTilt" aria-label="Tilt">
       <div class="ticks"><i></i><i></i><i></i></div>
-      <button id="tiltZero" class="tiltZero" aria-label="Level"></button>
+      <button id="tiltZero" class="tiltZero" data-ta="aLevel" aria-label="Level"></button>
     </div>
   </div>
   <div class="cropBar">
     <div class="ratios" id="ratios">
-      <button class="ratio" data-r="0" aria-pressed="true">Free</button>
+      <button class="ratio" data-r="0" aria-pressed="true" data-t="rFree">Free</button>
       <button class="ratio" data-r="1" aria-pressed="false">1:1</button>
       <button class="ratio" data-r="1.3333" aria-pressed="false">4:3</button>
       <button class="ratio" data-r="0.75" aria-pressed="false">3:4</button>
@@ -358,14 +420,14 @@
       <button class="ratio" data-r="0.5625" aria-pressed="false">9:16</button>
     </div>
     <div class="tools">
-      <button class="tool" id="rotBtn">Rotate 90&deg;</button>
-      <button class="tool" id="flipH" aria-pressed="false">Flip H</button>
-      <button class="tool" id="flipV" aria-pressed="false">Flip V</button>
+      <button class="tool" id="rotBtn" data-t="bRotate">Rotate 90&deg;</button>
+      <button class="tool" id="flipH" aria-pressed="false" data-t="bFlipH">Flip H</button>
+      <button class="tool" id="flipV" aria-pressed="false" data-t="bFlipV">Flip V</button>
     </div>
-    <div class="applyRow"><button id="cropApply">Apply</button></div>
+    <div class="applyRow"><button id="cropApply" data-t="bApply">Apply</button></div>
     <div class="cropDone">
-      <button id="cropCancel">Cancel</button>
-      <button id="cropReset">Reset</button>
+      <button id="cropCancel" data-t="bCancel">Cancel</button>
+      <button id="cropReset" data-t="bReset">Reset</button>
     </div>
   </div>
 </div>
@@ -376,7 +438,9 @@
 
   var CANVAS_CAP = 16000000;
 
-  var format = "src", targetW = null, quality = null;
+  /* 1:1 and Highest are selected from the start: a photo opens straight
+     away, untouched, so sharpening alone is a complete edit */
+  var format = "src", targetW = 0, quality = 0.90;
   var customMode = false, customW = null, customH = null, baseRatio = null;
   var sourceFiles = [], edits = [], results = [], urls = [], token = 0, busy = false;
   /* sharpAll drives every photo; sharps[i] is null until that photo is set
@@ -390,6 +454,123 @@
       handle = $("handle"), imgOld = $("imgOld"), imgNew = $("imgNew"),
       levelsRow = $("levels"), qLabel = $("qLabel"),
       customRow = $("customRow"), cwEl = $("cw"), chEl = $("ch");
+
+  /* Every word the user can see, in both languages. Switching writes these into
+     the [data-t] marks already in the page and nothing else: no photo is decoded,
+     re-encoded or re-read, so the results on screen stay exactly as they are. */
+  var STR = {
+    en: {
+      onDevice:"On-Device", update:"\u21BB Update",
+      lFormat:"Format", fSource:"Source", sOrig:"Orig",
+      lLongest:"Longest Side", sPx:"Px", fCustom:"Custom",
+      fW:"W", fH:"H", pW:"Width", pH:"Height",
+      lQuality:"Quality", qOff:"Quality \u2014 Not Used Here",
+      qHighest:"Highest", qHigh:"High", qMed:"Med", qLow:"Low", qLeast:"Least",
+      lSharp:"Sharpness", bChoose:"Choose Photos", bSave:"Save",
+      subHint:"Enter a width and a height", bTotal:"Total",
+      compressing:"Compressing {1} of {2}\u2026",
+      errRead:"Could not read those files. Try picking from your photo library.",
+      errOpen:"Could not open that image.",
+      errShare:"Sharing is unavailable here.",
+      errOne:"Could Not Compress",
+      aEdit:"Edit", aRemove:"Remove",
+      tOrig:"Original", tComp:"Compressed",
+      vSharp:"Sharpness \u2014 This Photo", bClose:"Close",
+      rFree:"Free", bRotate:"Rotate 90\u00B0", bFlipH:"Flip H", bFlipV:"Flip V",
+      aTilt:"Tilt", aLevel:"Level",
+      bApply:"Apply", bCancel:"Cancel", bReset:"Reset",
+      hint:"Nothing leaves your phone. Tap the corner icon to crop, rotate, or flip. " +
+           "Tap the image to compare it against the original. Press and hold to inspect " +
+           "it up close: it is magnified where your finger is, and flashes the original " +
+           "in the middle so you can see what the compression took. Save opens the share " +
+           "sheet: Save Image puts it in Photos, Save to Files keeps the exact file shown here."
+    },
+    ar: {
+      onDevice:"على الجهاز", update:"\u21BB تحديث",
+      lFormat:"الصيغة", fSource:"الأصل", sOrig:"كما هي",
+      lLongest:"الضلع الأطول", sPx:"بكسل", fCustom:"مخصص",
+      fW:"عرض", fH:"ارتفاع", pW:"العرض", pH:"الارتفاع",
+      lQuality:"الجودة", qOff:"الجودة \u2014 لا تستخدم هنا",
+      qHighest:"الأعلى", qHigh:"عالية", qMed:"متوسطة", qLow:"منخفضة", qLeast:"الأدنى",
+      lSharp:"الحدة", bChoose:"اختر الصور", bSave:"حفظ",
+      subHint:"أدخل العرض أو الارتفاع", bTotal:"المجموع",
+      compressing:"جاري ضغط {1} من {2}\u2026",
+      errRead:"تعذرت قراءة هذه الملفات. جرب اختيارها من مكتبة الصور.",
+      errOpen:"تعذر فتح هذه الصورة.",
+      errShare:"المشاركة غير متاحة هنا.",
+      errOne:"تعذر الضغط",
+      aEdit:"تعديل", aRemove:"حذف",
+      tOrig:"الأصلية", tComp:"المضغوطة",
+      vSharp:"الحدة \u2014 لهذه الصورة", bClose:"إغلاق",
+      rFree:"حر", bRotate:"تدوير 90\u00B0", bFlipH:"قلب أفقي", bFlipV:"قلب رأسي",
+      aTilt:"ميلان", aLevel:"تسوية",
+      bApply:"تطبيق", bCancel:"إلغاء", bReset:"إعادة ضبط",
+      hint:"لا شيء يغادر هاتفك. اضغط الأيقونة في زاوية الصورة للقص أو التدوير أو القلب. " +
+           "اضغط الصورة لمقارنتها بالأصل. اضغط مع الاستمرار لتتفحصها عن قرب: تتكبر عند " +
+           "موضع إصبعك، وتومض الأصلية في المنتصف لترى ما أخذه الضغط. زر الحفظ يفتح قائمة " +
+           "المشاركة: حفظ الصورة يضعها في الصور، وحفظ في الملفات يبقي الملف كما هو معروض هنا."
+    }
+  };
+
+  var lang = "en";
+  try { var kept = localStorage.getItem("fw-lang"); if (STR[kept]) lang = kept; } catch (e){}
+
+  function t(k){
+    var d = STR[lang];
+    return (d && d[k] !== undefined) ? d[k] : STR.en[k];
+  }
+
+  /* a button that carries a <small> keeps it: only the leading text node moves */
+  function setText(el, v){
+    var sm = el.querySelector("small");
+    if (sm && el.firstChild && el.firstChild.nodeType === 3) el.firstChild.nodeValue = v;
+    else el.textContent = v;
+  }
+
+  function each(sel, fn){
+    Array.prototype.forEach.call(document.querySelectorAll(sel), fn);
+  }
+
+  function applyLang(){
+    document.documentElement.lang = lang;
+    document.body.classList.toggle("ar", lang === "ar");
+    each("[data-t]",  function(el){ setText(el, t(el.getAttribute("data-t"))); });
+    each("[data-tp]", function(el){ el.placeholder = t(el.getAttribute("data-tp")); });
+    each("[data-ta]", function(el){ el.setAttribute("aria-label", t(el.getAttribute("data-ta"))); });
+    each("#lang .langBtn", function(b){
+      b.setAttribute("aria-pressed", b.dataset.l === lang ? "true" : "false");
+    });
+    paintStatus();
+    paintSave();
+    refreshGate();
+  }
+
+  each("#lang .langBtn", function(b){
+    b.addEventListener("click", function(){
+      if (b.dataset.l === lang) return;
+      lang = b.dataset.l;
+      try { localStorage.setItem("fw-lang", lang); } catch (e){}
+      applyLang();
+    });
+  });
+
+  /* On the home screen iOS freezes the app instead of closing it, so a new
+     version is never requested; a plain reload can also come straight back
+     from cache. Loading an address the phone has never seen forces a real
+     download, which is the only thing that reliably brings the update in. */
+  var reloadBtn = $("reload");
+  /* iOS only paints :active on an element that carries a touch listener,
+     and the jump below would replace the page before any flash could be
+     seen — so the press is drawn here and the jump waits for it to land */
+  reloadBtn.addEventListener("touchstart", function(){
+    this.classList.add("tapped");
+  }, { passive: true });
+  reloadBtn.addEventListener("click", function(){
+    this.classList.add("tapped");
+    setTimeout(function(){
+      location.replace(location.href.replace(/[?#].*$/, "") + "?u=" + Date.now());
+    }, 110);
+  });
 
   function bind(containerId, cb){
     var btns = $(containerId).querySelectorAll(".opt");
@@ -498,7 +679,7 @@
   function refreshGate(){
     var ll = lossless();
     levelsRow.classList.toggle("muted", ll);
-    qLabel.textContent = ll ? "Quality \u2014 not used here" : "Quality";
+    qLabel.textContent = ll ? t("qOff") : t("lQuality");
     shBtn.disabled = !(ready() && readyFiles().length);
     subEl.style.display = (sourceFiles.length && !ready()) ? "block" : "none";
   }
@@ -552,9 +733,23 @@
     if (b >= 10000)   return (b/1000).toFixed(1) + " KB";
     return (b/1000).toFixed(2) + " KB";
   }
-  function setStatus(m, err){
-    statusEl.textContent = m || "";
-    statusEl.className = "status" + (err ? " err" : "");
+  /* the message is kept as a key rather than as finished text, so switching
+     language repaints whatever is showing instead of wiping it */
+  var statusKey = null, statusNums = null, statusErr = false;
+  function setStatus(k, err, nums){
+    statusKey = k || null; statusErr = !!err; statusNums = nums || null;
+    paintStatus();
+  }
+  function paintStatus(){
+    var m = statusKey ? t(statusKey) : "";
+    if (m && statusNums) m = m.replace("{1}", statusNums[0]).replace("{2}", statusNums[1]);
+    statusEl.textContent = m;
+    statusEl.className = "status" + (statusErr ? " err" : "");
+  }
+
+  var saveN = 0;
+  function paintSave(){
+    shBtn.textContent = saveN > 1 ? t("bSave") + " " + saveN : t("bSave");
   }
   function tag(){
     var n = new Date(), p = function(v){ return (v<10?"0":"") + v; };
@@ -765,19 +960,53 @@
   }
 
   function editIcon(){
-    return '<button class="editBtn" aria-label="Edit"><svg viewBox="0 0 24 24">' +
+    return '<button class="editBtn" data-ta="aEdit" aria-label="' + t("aEdit") + '"><svg viewBox="0 0 24 24">' +
            '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>' +
            '</svg></button>';
   }
 
   function delIcon(){
-    return '<button class="delBtn" aria-label="Remove"><svg viewBox="0 0 24 24">' +
+    return '<button class="delBtn" data-ta="aRemove" aria-label="' + t("aRemove") + '"><svg viewBox="0 0 24 24">' +
            '<path d="M6 6l12 12M18 6L6 18"/>' +
            '</svg></button>';
   }
 
+  /* the editor and the compare view cover the whole screen; the page beneath is
+     frozen where it stands so closing them lands back on the same photo */
+  var lockY = 0, locks = 0;
+  function lockPage(){
+    if (locks++) return;
+    lockY = window.pageYOffset || document.documentElement.scrollTop || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = (-lockY) + "px";
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+  }
+  function unlockPage(){
+    if (!locks || --locks) return;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    window.scrollTo(0, lockY);
+  }
+
+  /* rebuilding the list empties it first, which would drop the page to the top;
+     the old height is held until the cards are back, then the scroll is restored */
+  function holdScroll(){
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    stubs.style.minHeight = stubs.offsetHeight + "px";
+    return function(){
+      stubs.style.minHeight = "";
+      window.scrollTo(0, y);
+    };
+  }
+
   async function showOriginals(){
     var mine = ++token;
+    var back = holdScroll();
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
     urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
@@ -812,6 +1041,7 @@
       stubs.appendChild(el);
     }
     refreshGate();
+    back();
   }
 
   async function run(){
@@ -819,6 +1049,7 @@
     var mine = ++token;
     if (busy) return;
     busy = true;
+    var back = holdScroll();
 
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
     urls = []; results = []; stubEls = []; stubs.innerHTML = "";
@@ -832,7 +1063,7 @@
       if (mine !== token) break;
       var f = sourceFiles[i];
       if (!f) break;
-      setStatus("Compressing " + (i+1) + " of " + sourceFiles.length + "\u2026");
+      setStatus("compressing", false, [i+1, sourceFiles.length]);
       try {
         var mime = outMime(f);
         var q = quality === null ? 0.75 : quality;
@@ -849,13 +1080,14 @@
     if (mine !== token){ rerender(); return; }
 
     var done = readyFiles();
-    if (!done.length){ setStatus("Could not read those files. Try picking from your photo library.", true); return; }
+    if (!done.length){ back(); setStatus("errRead", true); return; }
     setStatus("");
+    back();
     $("tOld").textContent = fmt(tOld);
     $("tNew").textContent = fmt(tNew);
     totalBox.classList.remove("hidden");
     refreshGate();
-    shBtn.textContent = done.length > 1 ? "Save " + done.length : "Save";
+    saveN = done.length; paintSave();
   }
 
   function retotal(){
@@ -896,7 +1128,9 @@
         '<span class="arrow">&rarr;</span><span class="new"></span></div>' +
         '<div class="dim"></div>' +
       '</div>' +
-      '<div class="shot">' + editIcon() + '<img alt=""></div>';
+      '<div class="shot">' + editIcon() + '<img alt="">' +
+        '<img class="peek pNew" alt=""><img class="peek pOrig" alt="">' +
+        '<span class="peekTag"></span></div>';
 
     el.querySelector(".name").textContent = original.name;
     fillStub(el, file, original, r);
@@ -913,6 +1147,7 @@
     });
     wireEdit(el, idx);
     wireDelete(el, idx);
+    wirePeek(el);
     stubEls[idx] = el;
     stubs.appendChild(el);
   }
@@ -921,30 +1156,46 @@
     var el = document.createElement("div");
     el.className = "stub";
     el.innerHTML = '<div class="meta">' + delIcon() + '<div class="name"></div>' +
-      '<div class="nums" style="color:#BF3B2B">Could not compress</div></div>';
+      '<div class="nums" data-t="errOne" style="color:#BF3B2B">' + t("errOne") + '</div></div>';
     el.querySelector(".name").textContent = name;
     wireDelete(el, idx);
     stubs.appendChild(el);
   }
 
-  var viewIdx = -1;
+  var viewIdx = -1, viewR = null;
+
+  /* the photo gets whatever room is left once the numbers, the slider and the close
+     button have taken theirs — a fixed fraction of the screen overflowed the column,
+     and the stage was quietly squashed to fit, which stretched the photo inside it */
+  function fitStage(r){
+    var vcs = getComputedStyle(viewer), used = 0;
+    ["viewerCap", "viewSharp", "closeBtn"].forEach(function(id){
+      var n = $(id), cs = getComputedStyle(n);
+      used += n.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+    });
+    var vw = Math.min(viewer.clientWidth - parseFloat(vcs.paddingLeft)
+                      - parseFloat(vcs.paddingRight), 900);
+    var vh = viewer.clientHeight - parseFloat(vcs.paddingTop)
+             - parseFloat(vcs.paddingBottom) - used;
+    var s = Math.min(vw / r.ow, Math.max(80, vh) / r.oh);
+    stage.style.width  = Math.round(r.ow * s) + "px";
+    stage.style.height = Math.round(r.oh * s) + "px";
+  }
 
   function openViewer(idx, oldUrl, newUrl, r, oldSize, newSize){
     viewIdx = idx;
+    viewR = r;
     imgOld.src = oldUrl;
     imgNew.src = newUrl;
-    var vw = Math.min(window.innerWidth - 20, 900);
-    var vh = window.innerHeight * 0.76;
-    var s = Math.min(vw / r.ow, vh / r.oh);
-    stage.style.width  = Math.round(r.ow * s) + "px";
-    stage.style.height = Math.round(r.oh * s) + "px";
     stage.style.setProperty("--split", "50%");
     $("capOldDim").textContent  = r.ow + "\u00D7" + r.oh;
     $("capOldSize").textContent = fmt(oldSize);
     $("capNewDim").textContent  = r.w + "\u00D7" + r.h;
     $("capNewSize").textContent = fmt(newSize);
     $("oneSharp").value = effSharp(idx);
+    lockPage();
     viewer.classList.remove("hidden");
+    fitStage(r);
   }
 
   /* one photo, re-encoded at the real output size so what is shown is what saves */
@@ -972,6 +1223,7 @@
       el._view = { refUrl: refUrl, newUrl: newUrl, r: r, oldSize: f.size, newSize: out.size };
 
       if (viewIdx === idx && !viewer.classList.contains("hidden")){
+        viewR = r;
         imgOld.src = refUrl;
         imgNew.src = newUrl;
         $("capNewSize").textContent = fmt(out.size);
@@ -1014,8 +1266,13 @@
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   });
+  window.addEventListener("resize", function(){
+    if (viewR && !viewer.classList.contains("hidden")) fitStage(viewR);
+  });
+
   $("closeBtn").addEventListener("click", function(){
     viewer.classList.add("hidden");
+    unlockPage();
     imgOld.removeAttribute("src"); imgNew.removeAttribute("src");
   });
 
@@ -1034,6 +1291,109 @@
       e.stopPropagation();
       openEditor(idx);
     });
+  }
+
+  /* Press and hold a photo and it grows to twice its size under the finger, then walks
+     through what the compression did: the compressed photo first, the original in the
+     middle as the reference, then back to the compressed one, which stays until the
+     finger lifts — so the last thing seen is the one that will be saved.
+     The original gets the longer beat: it is the one being read for detail, while the
+     compressed one is already familiar from the card. */
+  var HOLD = 450, BEAT = 750, LOOK = 1500;
+
+  function wirePeek(el){
+    var shot = el.querySelector(".shot");
+    if (!shot) return;
+    var pNew = shot.querySelector(".pNew"), pOrig = shot.querySelector(".pOrig"),
+        tagEl = shot.querySelector(".peekTag");
+    if (!pNew || !pOrig || !tagEl) return;
+    var timer = 0, beat = 0, on = false, sx = 0, sy = 0, ox = 0, oy = 0, ax = 0, ay = 0;
+
+    /* ox, oy is the anchor inside the frame: the spot that stays put while the rest
+       grows around it, which is what keeps the frame covered from any press point */
+    function setOrigin(){
+      var r = shot.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      var o = (Math.max(0, Math.min(1, ox / r.width)) * 100).toFixed(2) + "% " +
+              (Math.max(0, Math.min(1, oy / r.height)) * 100).toFixed(2) + "%";
+      pNew.style.transformOrigin = o;
+      pOrig.style.transformOrigin = o;
+    }
+
+    function show(orig){
+      shot.classList.toggle("orig", orig);
+      tagEl.textContent = orig ? t("tOrig") : t("tComp");
+    }
+
+    /* the original is the only one that may still be decoding: it is the full-size
+       reference, while the compressed one is already on screen behind the hold */
+    function whenOrigReady(fn){
+      if (pOrig.complete && pOrig.naturalWidth) fn();
+      else pOrig.onload = function(){ if (on) fn(); };
+    }
+
+    /* the finger comes up and everything goes, in one frame — no fade, so the eye
+       catches the difference; dropping the srcs frees the decoded full-size image */
+    function stop(){
+      if (timer){ clearTimeout(timer); timer = 0; }
+      if (beat){ clearTimeout(beat); beat = 0; }
+      if (on){ on = false; shot.classList.remove("peeking", "orig"); }
+      pOrig.onload = null;
+      if (pNew.getAttribute("src")) pNew.removeAttribute("src");
+      if (pOrig.getAttribute("src")) pOrig.removeAttribute("src");
+    }
+
+    shot.addEventListener("touchstart", function(e){
+      stop();
+      if (e.touches.length !== 1) return;
+      if (e.target.closest(".editBtn")) return;
+      var v = el._view;
+      if (!v || !v.refUrl || !v.newUrl) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      /* decoding starts now, so each step of the hold lands without a stall */
+      pNew.src = v.newUrl;
+      pOrig.src = v.refUrl;
+      timer = setTimeout(function(){
+        timer = 0; on = true;
+        var r = shot.getBoundingClientRect();
+        ox = sx - r.left; oy = sy - r.top; ax = sx; ay = sy;
+        setOrigin();
+        show(false);
+        shot.classList.add("peeking");
+        beat = setTimeout(function(){
+          beat = 0;
+          whenOrigReady(function(){
+            show(true);
+            beat = setTimeout(function(){ beat = 0; show(false); }, LOOK);
+          });
+        }, BEAT);
+      }, HOLD);
+    }, { passive: true });
+
+    shot.addEventListener("touchmove", function(e){
+      var t = e.touches[0];
+      if (!t) return;
+      if (on){
+        e.preventDefault();
+        /* the picture travels with the finger, so the anchor walks the other way;
+           moving it by the same distance makes the two track each other exactly */
+        var r = shot.getBoundingClientRect();
+        ox = Math.max(0, Math.min(r.width,  ox - (t.clientX - ax)));
+        oy = Math.max(0, Math.min(r.height, oy - (t.clientY - ay)));
+        ax = t.clientX; ay = t.clientY;
+        setOrigin();
+        return;
+      }
+      if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) stop();
+    }, { passive: false });
+
+    shot.addEventListener("touchend", function(e){
+      if (on) e.preventDefault();       /* swallow the tap that would open the compare view */
+      stop();
+    }, { passive: false });
+
+    shot.addEventListener("touchcancel", stop);
+    shot.addEventListener("contextmenu", function(e){ e.preventDefault(); });
   }
 
   function wireDelete(el, idx){
@@ -1062,7 +1422,7 @@
     urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
     baseRatio = null;
-    shBtn.textContent = "Save";
+    saveN = 0; paintSave();
     setStatus("");
     refreshGate();
   }
@@ -1074,12 +1434,14 @@
     cFH = e ? !!e.fh : false;
     cFV = e ? !!e.fv : false;
     cFree = e ? (e.free || 0) : 0;
+    ratioVal = e ? (e.ratio || 0) : 0;
+    setRatioButtons(ratioVal);
     $("flipH").setAttribute("aria-pressed", cFH ? "true" : "false");
     $("flipV").setAttribute("aria-pressed", cFV ? "true" : "false");
     $("tilt").value = cFree;
 
     try { cBmp = await decode(sourceFiles[idx]); }
-    catch (err){ setStatus("Could not open that image.", true); return; }
+    catch (err){ setStatus("errOpen", true); return; }
     var d0 = dimsOf(cBmp);
     bw0 = d0.w; bh0 = d0.h;
 
@@ -1089,6 +1451,7 @@
       fw = e.sw * viewK; fh = e.sh * viewK;
     } else resetFrame();
     layoutFrame();
+    lockPage();
     cropper.classList.remove("hidden");
   }
 
@@ -1271,6 +1634,7 @@
 
   function closeEditor(){
     cropper.classList.add("hidden");
+    unlockPage();
     release(cBmp);
     cBmp = null;
   }
@@ -1287,7 +1651,7 @@
 
     var whole = (sx === 0 && sy === 0 && sw === oW && sh === oH);
     if (whole && cRot === 0 && !cFH && !cFV && !cFree) edits[cropIdx] = null;
-    else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree };
+    else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree, ratio: ratioVal };
 
     closeEditor();
     rerender();
@@ -1300,10 +1664,10 @@
       try { await navigator.share({ files: files }); return; }
       catch (e){ if (e && e.name === "AbortError") return; }
     }
-    setStatus("Sharing is unavailable here.", true);
+    setStatus("errShare", true);
   });
 
-  refreshGate();
+  applyLang();
 })();
 </script>
 </body>
