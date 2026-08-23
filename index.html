@@ -96,6 +96,7 @@
     background:#16212B;box-shadow:0 1px 2px rgba(22,33,43,.35)}
   .ticks.light i{background:var(--rule)}
   .actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:22px}
+  .actions .wide{grid-column:1/-1}
   .btn{display:block;width:100%;border:none;border-radius:var(--r);cursor:pointer;
     font-family:var(--sans);font-size:13.5px;font-weight:650;padding:11px 6px;
     background:#16212B;color:#FFFFFF;-webkit-appearance:none}
@@ -293,7 +294,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.7.1</span>
+      <span class="ver">v1.8</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -341,6 +342,7 @@
   <div class="actions">
     <button class="btn" id="pick" data-t="bChoose">Choose Photos</button>
     <button class="btn ghost" id="share" disabled>Save</button>
+    <button class="btn ghost wide" id="pdfOut" data-t="pdfOutSave" disabled>Save PDF</button>
   </div>
   <p class="sub" id="sub" data-t="subHint">Enter a width and a height</p>
 
@@ -450,7 +452,8 @@
   var $ = function(id){ return document.getElementById(id); };
   var picker = $("picker"), pickBtn = $("pick"), subEl = $("sub"),
       statusEl = $("status"), stubs = $("stubs"), totalBox = $("total"),
-      shBtn = $("share"), viewer = $("viewer"), stage = $("stage"),
+      shBtn = $("share"), pdfOutBtn = $("pdfOut"),
+      viewer = $("viewer"), stage = $("stage"),
       handle = $("handle"), imgOld = $("imgOld"), imgNew = $("imgNew"),
       levelsRow = $("levels"), qLabel = $("qLabel"),
       customRow = $("customRow"), cwEl = $("cw"), chEl = $("ch");
@@ -467,6 +470,8 @@
       lQuality:"Quality", qOff:"Quality \u2014 Not Used Here",
       qHighest:"Highest", qHigh:"High", qMed:"Med", qLow:"Low", qLeast:"Least",
       lSharp:"Sharpness", bChoose:"Choose Photos", bSave:"Save",
+      pdfOutSave:"Save PDF", pdfOutBusy:"Building the PDF\u2026",
+      pdfOutErr:"Could not build the PDF.",
       subHint:"Enter a width and a height", bTotal:"Total",
       compressing:"Compressing {1} of {2}\u2026",
       errRead:"Could not read those files. Try picking from your photo library.",
@@ -493,6 +498,8 @@
       lQuality:"الجودة", qOff:"الجودة \u2014 لا تستخدم هنا",
       qHighest:"الأعلى", qHigh:"عالية", qMed:"متوسطة", qLow:"منخفضة", qLeast:"الأدنى",
       lSharp:"الحدة", bChoose:"اختر الصور", bSave:"حفظ",
+      pdfOutSave:"حفظ PDF", pdfOutBusy:"جاري إنشاء ملف PDF\u2026",
+      pdfOutErr:"تعذر إنشاء ملف PDF.",
       subHint:"أدخل العرض أو الارتفاع", bTotal:"المجموع",
       compressing:"جاري ضغط {1} من {2}\u2026",
       errRead:"تعذرت قراءة هذه الملفات. جرب اختيارها من مكتبة الصور.",
@@ -681,6 +688,7 @@
     levelsRow.classList.toggle("muted", ll);
     qLabel.textContent = ll ? t("qOff") : t("lQuality");
     shBtn.disabled = !(ready() && readyFiles().length);
+    pdfOutBtn.disabled = shBtn.disabled || pdfOutBusy;
     subEl.style.display = (sourceFiles.length && !ready()) ? "block" : "none";
   }
 
@@ -1655,6 +1663,100 @@
 
     closeEditor();
     rerender();
+  });
+
+  /* ---- PDF output ---------------------------------------------------------
+     Our own writer: no library, no dependency. Every result becomes one page
+     at 150dpi. A JPEG result is embedded byte for byte through /DCTDecode, so
+     the page holds exactly the file shown on screen and nothing is compressed
+     twice; a PNG result has no place in a PDF and is encoded to JPEG for the
+     document only, leaving the saved PNG itself untouched. */
+  var pdfOutBusy = false;
+
+  function pdfOutStr(v){
+    var a = new Uint8Array(v.length), i;
+    for (i = 0; i < v.length; i++) a[i] = v.charCodeAt(i) & 255;
+    return a;
+  }
+
+  function pdfOutBuild(pages){
+    var parts = [], len = 0, off = [], i;
+    function put(v){
+      var a = (typeof v === "string") ? pdfOutStr(v) : v;
+      parts.push(a); len += a.length;
+    }
+    var n = pages.length, last = 2 + n * 3, kids = "";
+    for (i = 0; i < n; i++) kids += (5 + i * 3) + " 0 R ";
+
+    put("%PDF-1.4\n%\u00E2\u00E3\u00CF\u00D3\n");
+    off[1] = len;
+    put("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+    off[2] = len;
+    put("2 0 obj\n<< /Type /Pages /Kids [" + kids.replace(/ $/, "") + "] /Count " + n + " >>\nendobj\n");
+
+    for (i = 0; i < n; i++){
+      var pg = pages[i], oI = 3 + i * 3, oC = 4 + i * 3, oP = 5 + i * 3;
+      var w = (pg.w * 72 / 150).toFixed(2), h = (pg.h * 72 / 150).toFixed(2);
+      off[oI] = len;
+      put(oI + " 0 obj\n<< /Type /XObject /Subtype /Image /Width " + pg.w +
+          " /Height " + pg.h + " /ColorSpace /DeviceRGB /BitsPerComponent 8" +
+          " /Filter /DCTDecode /Length " + pg.bytes.length + " >>\nstream\n");
+      put(pg.bytes);
+      put("\nendstream\nendobj\n");
+      var cs = "q " + w + " 0 0 " + h + " 0 0 cm /Im0 Do Q\n";
+      off[oC] = len;
+      put(oC + " 0 obj\n<< /Length " + cs.length + " >>\nstream\n" + cs + "endstream\nendobj\n");
+      off[oP] = len;
+      put(oP + " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + w + " " + h +
+          "] /Resources << /XObject << /Im0 " + oI + " 0 R >> >> /Contents " + oC + " 0 R >>\nendobj\n");
+    }
+
+    var start = len, x = "xref\n0 " + (last + 1) + "\n0000000000 65535 f \n";
+    for (i = 1; i <= last; i++) x += ("0000000000" + off[i]).slice(-10) + " 00000 n \n";
+    x += "trailer\n<< /Size " + (last + 1) + " /Root 1 0 R >>\nstartxref\n" + start + "\n%%EOF\n";
+    put(x);
+    return new Blob(parts, { type: "application/pdf" });
+  }
+
+  async function pdfOutPages(files){
+    var pages = [], i;
+    for (i = 0; i < files.length; i++){
+      var f = files[i], bmp = null, c = null;
+      try {
+        bmp = await decode(f);
+        var d = dimsOf(bmp);
+        if (f.type === "image/jpeg"){
+          pages.push({ bytes: new Uint8Array(await f.arrayBuffer()), w: d.w, h: d.h });
+        } else {
+          c = canvasOf(d.w, d.h);
+          c.getContext("2d").drawImage(bmp, 0, 0);
+          var b = await toBlob(c, "image/jpeg", 0.92);
+          pages.push({ bytes: new Uint8Array(await b.arrayBuffer()), w: d.w, h: d.h });
+        }
+      } finally { release(bmp); kill(c); }
+    }
+    return pages;
+  }
+
+  pdfOutBtn.addEventListener("click", async function(){
+    var files = readyFiles();
+    if (!files.length || pdfOutBusy) return;
+    pdfOutBusy = true;
+    pdfOutBtn.disabled = true;
+    setStatus("pdfOutBusy");
+    try {
+      var one = new File([pdfOutBuild(await pdfOutPages(files))],
+                         "fw-" + tag() + ".pdf", { type: "application/pdf" });
+      setStatus("");
+      if (navigator.canShare && navigator.canShare({ files: [one] })){
+        try { await navigator.share({ files: [one] }); }
+        catch (e){ if (!e || e.name !== "AbortError") setStatus("errShare", true); }
+      } else setStatus("errShare", true);
+    } catch (e){
+      setStatus("pdfOutErr", true);
+    }
+    pdfOutBusy = false;
+    refreshGate();
   });
 
   shBtn.addEventListener("click", async function(){
