@@ -49,11 +49,12 @@
     text-transform:uppercase;transition:background .15s,border-color .15s,color .15s}
   .refresh:active,.refresh.tapped{background:#16212B;border-color:#16212B;color:#FFFFFF}
   .refresh.tapped{transition:none}
-  /* the toggle takes the whole width left of the version block: a wide, tall
-     target so the thumb lands on it without aiming */
-  .head-left{flex:1 1 auto;min-width:0}
-  .lang{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:11px;
-    width:100%;max-width:212px}
+  /* the column takes the width of its widest child, which is the title, so the
+     toggle beneath it ends exactly where the last T does; the negative margin
+     trims the letter-spacing the title trails after that T */
+  .head-left{flex:0 1 auto;min-width:0}
+  .head-left h1{margin-right:-.14em}
+  .lang{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:11px;width:100%}
   .langBtn{appearance:none;-webkit-appearance:none;background:#FDFCF8;cursor:pointer;
     border:1px solid var(--rule);border-radius:11px;padding:11px 4px;
     color:#16212B;font-family:var(--sans);font-size:13px;font-weight:650;line-height:1.15;
@@ -285,12 +286,12 @@
     <div class="head-left">
       <h1>FEATHERWEIGHT</h1>
       <div class="lang" id="lang">
-        <button class="langBtn" type="button" data-l="ar" aria-pressed="false">عربي</button>
         <button class="langBtn" type="button" data-l="en" aria-pressed="true">English</button>
+        <button class="langBtn" type="button" data-l="ar" aria-pressed="false">عربي</button>
       </div>
     </div>
     <span class="meta-right">
-      <span class="form-no" data-t="onDevice">on-device</span>
+      <span class="form-no" data-t="onDevice">On-Device</span>
       <span class="ver">v1.7</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
@@ -298,23 +299,23 @@
 
   <div class="label" data-t="lFormat">Format</div>
   <div class="row3" id="formats">
-    <button class="opt" data-f="src" aria-pressed="true" data-t="fSource">Source<small data-t="sOrig">orig</small></button>
-    <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG<small data-t="sLossy">lossy</small></button>
-    <button class="opt" data-f="image/png" aria-pressed="false">PNG<small data-t="sLossless">lossless</small></button>
+    <button class="opt" data-f="src" aria-pressed="true" data-t="fSource">Source<small data-t="sOrig">Orig</small></button>
+    <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG<small data-t="sLossy">Lossy</small></button>
+    <button class="opt" data-f="image/png" aria-pressed="false">PNG<small data-t="sLossless">Lossless</small></button>
   </div>
 
-  <div class="label" data-t="lLongest">Longest side</div>
+  <div class="label" data-t="lLongest">Longest Side</div>
   <div class="row6" id="scales">
-    <button class="opt" data-w="0" aria-pressed="true">1:1<small data-t="sOrig">orig</small></button>
-    <button class="opt" data-w="900" aria-pressed="false">900<small data-t="sPx">px</small></button>
-    <button class="opt" data-w="700" aria-pressed="false">700<small data-t="sPx">px</small></button>
-    <button class="opt" data-w="500" aria-pressed="false">500<small data-t="sPx">px</small></button>
-    <button class="opt" data-w="350" aria-pressed="false">350<small data-t="sPx">px</small></button>
-    <button class="opt" data-w="custom" aria-pressed="false" data-t="fCustom">Custom<small data-t="sPx">px</small></button>
+    <button class="opt" data-w="0" aria-pressed="true">1:1<small data-t="sOrig">Orig</small></button>
+    <button class="opt" data-w="900" aria-pressed="false">900<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="700" aria-pressed="false">700<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="500" aria-pressed="false">500<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="350" aria-pressed="false">350<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="custom" aria-pressed="false" data-t="fCustom">Custom<small data-t="sPx">Px</small></button>
   </div>
   <div class="custom hidden" id="customRow">
-    <label class="fieldwrap"><span data-t="fW">W</span><input id="cw" type="number" inputmode="numeric" placeholder="width" data-tp="pW"></label>
-    <label class="fieldwrap"><span data-t="fH">H</span><input id="ch" type="number" inputmode="numeric" placeholder="height" data-tp="pH"></label>
+    <label class="fieldwrap"><span data-t="fW">W</span><input id="cw" type="number" inputmode="numeric" placeholder="Width" data-tp="pW"></label>
+    <label class="fieldwrap"><span data-t="fH">H</span><input id="ch" type="number" inputmode="numeric" placeholder="Height" data-tp="pH"></label>
   </div>
   <div class="spacer"></div>
 
@@ -337,7 +338,7 @@
 
   <input type="file" id="picker" accept="image/*" multiple>
   <div class="actions">
-    <button class="btn" id="pick" data-t="bChoose">Choose photos</button>
+    <button class="btn" id="pick" data-t="bChoose">Choose Photos</button>
     <button class="btn ghost" id="share" disabled>Save</button>
   </div>
   <p class="sub" id="sub" data-t="subHint">Enter a width and a height</p>
@@ -378,7 +379,7 @@
     <div class="col"><div id="capNewDim"></div><div id="capNewSize"></div></div>
   </div>
   <div id="viewSharp">
-    <div class="vLabel" data-t="vSharp">Sharpness &mdash; this photo</div>
+    <div class="vLabel" data-t="vSharp">Sharpness &mdash; This Photo</div>
     <div class="tiltWrap">
       <input id="oneSharp" class="tilt" type="range" min="0" max="1" step="0.05" value="0" data-ta="lSharp" aria-label="Sharpness">
       <div class="ticks"><i></i><i></i><i></i></div>
@@ -458,22 +459,22 @@
      re-encoded or re-read, so the results on screen stay exactly as they are. */
   var STR = {
     en: {
-      onDevice:"on-device", update:"\u21BB Update",
-      lFormat:"Format", fSource:"Source", sOrig:"orig", sLossy:"lossy", sLossless:"lossless",
-      lLongest:"Longest side", sPx:"px", fCustom:"Custom",
-      fW:"W", fH:"H", pW:"width", pH:"height",
-      lQuality:"Quality", qOff:"Quality \u2014 not used here",
+      onDevice:"On-Device", update:"\u21BB Update",
+      lFormat:"Format", fSource:"Source", sOrig:"Orig", sLossy:"Lossy", sLossless:"Lossless",
+      lLongest:"Longest Side", sPx:"Px", fCustom:"Custom",
+      fW:"W", fH:"H", pW:"Width", pH:"Height",
+      lQuality:"Quality", qOff:"Quality \u2014 Not Used Here",
       qHighest:"Highest", qHigh:"High", qMed:"Med", qLow:"Low", qLeast:"Least",
-      lSharp:"Sharpness", bChoose:"Choose photos", bSave:"Save",
+      lSharp:"Sharpness", bChoose:"Choose Photos", bSave:"Save",
       subHint:"Enter a width and a height", bTotal:"Total",
       compressing:"Compressing {1} of {2}\u2026",
       errRead:"Could not read those files. Try picking from your photo library.",
       errOpen:"Could not open that image.",
       errShare:"Sharing is unavailable here.",
-      errOne:"Could not compress",
+      errOne:"Could Not Compress",
       aEdit:"Edit", aRemove:"Remove",
       tOrig:"Original", tComp:"Compressed",
-      vSharp:"Sharpness \u2014 this photo", bClose:"Close",
+      vSharp:"Sharpness \u2014 This Photo", bClose:"Close",
       rFree:"Free", bRotate:"Rotate 90\u00B0", bFlipH:"Flip H", bFlipV:"Flip V",
       aTilt:"Tilt", aLevel:"Level",
       bApply:"Apply", bCancel:"Cancel", bReset:"Reset",
