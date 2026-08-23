@@ -95,8 +95,10 @@
   .sharpBar::-moz-range-thumb{width:22px;height:22px;border:none;border-radius:50%;
     background:#16212B;box-shadow:0 1px 2px rgba(22,33,43,.35)}
   .ticks.light i{background:var(--rule)}
-  .actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:22px}
-  .actions .wide{grid-column:1/-1}
+  .actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:22px}
+  /* a fixed height keeps the three identical in both languages */
+  .actions .btn{display:flex;align-items:center;justify-content:center;
+    min-height:40px;font-size:12px;padding:11px 2px}
   .btn{display:block;width:100%;border:none;border-radius:var(--r);cursor:pointer;
     font-family:var(--sans);font-size:13.5px;font-weight:650;padding:11px 6px;
     background:#16212B;color:#FFFFFF;-webkit-appearance:none}
@@ -294,7 +296,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.9</span>
+      <span class="ver">v1.9.1</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -342,7 +344,7 @@
   <div class="actions">
     <button class="btn" id="pick" data-t="bChoose">Choose Photos</button>
     <button class="btn ghost" id="share" disabled>Save</button>
-    <button class="btn ghost wide" id="pdfOut" data-t="pdfOutSave" disabled>Save PDF</button>
+    <button class="btn ghost" id="pdfOut" data-t="pdfOutSave" disabled>Save PDF</button>
   </div>
   <p class="sub" id="sub" data-t="subHint">Enter a width and a height</p>
 
@@ -1809,6 +1811,11 @@
     STR.ar.pdfInWait = "جاري فتح الملف\u2026";
     STR.ar.pdfInPage = "جاري قراءة الصفحة {1} من {2}\u2026";
     STR.ar.pdfInFail = "تعذرت قراءة هذا الملف. قد يكون محمياً أو خالياً من الصفحات.";
+
+    /* the hint is the app's own sentence; the block only appends to it, so the
+       addition disappears with the block and nothing has to be put back */
+    STR.en.hint += " It opens PDF files too: every page arrives as its own photo.";
+    STR.ar.hint += " ويفتح ملفات PDF أيضاً، فتدخل كل صفحة كصورة مستقلة.";
   }
 
   function pdfInIs(f){
