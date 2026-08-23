@@ -296,7 +296,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.9.1</span>
+      <span class="ver">v1.10</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -1678,8 +1678,11 @@
      Our own writer: no library, no dependency. Every result becomes one page
      at 150dpi. A JPEG result is embedded byte for byte through /DCTDecode, so
      the page holds exactly the file shown on screen and nothing is compressed
-     twice; a PNG result has no place in a PDF and is encoded to JPEG for the
-     document only, leaving the saved PNG itself untouched. */
+     twice. A PNG result asked for no loss, so it goes in losslessly instead:
+     raw pixels deflated, which is the same compression a PNG file itself uses.
+     That page is far heavier than a JPEG one — the trade the format choice
+     already made. Phones older than iOS 16.4 have no CompressionStream, and
+     there the page falls back to JPEG rather than failing. */
   var pdfOutBusy = false;
 
   function pdfOutStr(v){
@@ -1709,7 +1712,8 @@
       off[oI] = len;
       put(oI + " 0 obj\n<< /Type /XObject /Subtype /Image /Width " + pg.w +
           " /Height " + pg.h + " /ColorSpace /DeviceRGB /BitsPerComponent 8" +
-          " /Filter /DCTDecode /Length " + pg.bytes.length + " >>\nstream\n");
+          " /Filter /" + (pg.flate ? "FlateDecode" : "DCTDecode") +
+          " /Length " + pg.bytes.length + " >>\nstream\n");
       put(pg.bytes);
       put("\nendstream\nendobj\n");
       var cs = "q " + w + " 0 0 " + h + " 0 0 cm /Im0 Do Q\n";
@@ -1727,6 +1731,20 @@
     return new Blob(parts, { type: "application/pdf" });
   }
 
+  async function pdfOutFlate(bmp, d){
+    if (typeof CompressionStream !== "function") return null;
+    var c = canvasOf(d.w, d.h), x = c.getContext("2d");
+    x.drawImage(bmp, 0, 0);
+    var px = x.getImageData(0, 0, d.w, d.h).data;
+    kill(c);
+    var n = d.w * d.h, rgb = new Uint8Array(n * 3), i, j = 0;
+    for (i = 0; i < n; i++){
+      rgb[j++] = px[i*4]; rgb[j++] = px[i*4+1]; rgb[j++] = px[i*4+2];
+    }
+    var st = new Blob([rgb]).stream().pipeThrough(new CompressionStream("deflate"));
+    return new Uint8Array(await new Response(st).arrayBuffer());
+  }
+
   async function pdfOutPages(files){
     var pages = [], i;
     for (i = 0; i < files.length; i++){
@@ -1735,12 +1753,17 @@
         bmp = await decode(f);
         var d = dimsOf(bmp);
         if (f.type === "image/jpeg"){
-          pages.push({ bytes: new Uint8Array(await f.arrayBuffer()), w: d.w, h: d.h });
+          pages.push({ bytes: new Uint8Array(await f.arrayBuffer()), w: d.w, h: d.h, flate: false });
         } else {
-          c = canvasOf(d.w, d.h);
-          c.getContext("2d").drawImage(bmp, 0, 0);
-          var b = await toBlob(c, "image/jpeg", 0.92);
-          pages.push({ bytes: new Uint8Array(await b.arrayBuffer()), w: d.w, h: d.h });
+          var z = await pdfOutFlate(bmp, d);
+          if (z){
+            pages.push({ bytes: z, w: d.w, h: d.h, flate: true });
+          } else {
+            c = canvasOf(d.w, d.h);
+            c.getContext("2d").drawImage(bmp, 0, 0);
+            var b = await toBlob(c, "image/jpeg", 0.92);
+            pages.push({ bytes: new Uint8Array(await b.arrayBuffer()), w: d.w, h: d.h, flate: false });
+          }
         }
       } finally { release(bmp); kill(c); }
     }
