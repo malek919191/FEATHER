@@ -2,6 +2,33 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Before touching anything: wait for «انطلق»
+
+**Nothing in this repository changes until the user writes the word `انطلق` ("go").** This rule sits first because it comes before every other rule in time: none of them apply until this one has been satisfied.
+
+Until that word arrives, the permitted work is:
+
+- reading files, searching the code, running read-only commands;
+- analysing, explaining, comparing options, estimating effort, pointing out risks;
+- proposing a plan, and writing example code **into the chat — never into a file**.
+
+Until that word arrives, all of the following are forbidden, with no exception:
+
+- editing, creating, or deleting any file in the repository — `index.html`, `CLAUDE.md`, and everything else;
+- `git commit`, `git push`, `git merge`, `git revert`, `git checkout -b`, or any command that changes repository state;
+- opening or merging a pull request;
+- downloading, vendoring, or otherwise adding any file to the project.
+
+How to read the signal:
+
+1. **The word is the signal — agreement is not.** "sounds good", "yes", "I like it", "منيح", "تمام", "احسن" are opinions on a plan, not permission to act on it. A conversation can look like consent for many turns and still never contain `انطلق`.
+2. **A direct order is its own `انطلق`.** "write this into CLAUDE.md", "add the button", "fix this bug" is an instruction to act now — carry it out. `انطلق` is the key for work that was merely *proposed*; it is not a second key demanded for work the user has just plainly ordered.
+3. **One `انطلق` covers the plan that was on the table when it was written, and nothing beyond it.** Once that work is delivered the permission is spent. The next piece of work needs its own.
+4. **Never bank it.** Do not ask for approval of future changes in advance, and never stretch an old `انطلق` to cover a later idea.
+5. **When unsure, stop.** Ending a turn with "waiting for انطلق" is always a safe outcome. An unrequested change to the user's app never is.
+
+The reason is not ceremony. The user does not read code: a change he did not ask for is one he cannot see coming and cannot audit afterwards — he discovers it only when the app behaves differently in his hand.
+
 ## Overview
 
 **FEATHER (Featherweight)** is a fully on-device image compression and editing tool, built as a single file: `index.html`. There is no backend, no network call, and no image is ever uploaded anywhere — all processing happens locally through the Canvas API and vanilla JavaScript.
@@ -117,7 +144,69 @@ This has hard consequences for every change shipped:
 7. **Always free memory**: every `ImageBitmap`, `<canvas>`, and Object URL created must be released via `release()` / `kill()` / `URL.revokeObjectURL()` on the correct path, including error paths, to avoid leaking memory on mobile — images can be very large.
 8. **Do not change the developer byline** (`Malek Barbari` in `.byline` and `footer`) unless explicitly asked. The **version number, by contrast, must be updated** with every functional or cosmetic change, following the Versioning section above — never leave a change without the appropriate bump.
 9. **Match the existing code style** (ES5-ish, no frameworks, the same terse variable naming already used in the file) rather than rewriting it in a modern idiom, to keep the file coherent and diffs small.
-10. **Any UI change (colours, fonts, layout) must preserve the current visual character** — the "paper/receipt" palette (`--paper`, `--card`, `--ink`, and `--stamp` in red as a rubber-stamp accent) — unless a new design is explicitly requested.
+10. **Never break the PDF isolation contract** — see the section of that name below. PDF-reading code stays inside its fenced block, behind its kill switch, and out of every other function in the file.
+11. **Any UI change (colours, fonts, layout) must preserve the current visual character** — the "paper/receipt" palette (`--paper`, `--card`, `--ink`, and `--stamp` in red as a rubber-stamp accent) — unless a new design is explicitly requested.
+
+## PDF: the isolation contract
+
+Reading PDF files is the only part of FEATHER that leans on code we did not write — the `pdf.js` library, vendored beside `index.html`. The user accepted it on one condition, agreed in full before a single line was added: **it must stay removable at any point in the future, in minutes, no matter how many versions have been built on top of it.**
+
+`git revert` is explicitly **not** the removal plan. By the time removal is wanted, dozens of features will sit above that commit and a revert would collide with all of them — the user said so himself, and he is right. Removal stays cheap only by construction. What follows is that construction. These are binding rules, not style preferences.
+
+**Status:** the contract was written and agreed before the implementation. The code lands underneath it, never the other way round.
+
+### 1. One door
+
+Images enter FEATHER at exactly one place — the file picker, where the chosen files become `sourceFiles`. PDF gets a single function at that point: a door that receives the picked files and hands back ordinary image blobs. Everything downstream — `decode`, `cropAndOrient`, `stepDown`, `sharpen`, the cropper, the compare viewer, sharing, the language layer — sees images and only images, and must never learn that PDF exists.
+
+### 2. One fenced block
+
+Every line of PDF code lives inside one contiguous block, between these two markers and nowhere else:
+
+```
+// ===== PDF IN — start · everything between these markers is deletable =====
+// ===== PDF IN — end =====
+```
+
+The markers are permanent. They are how the block is found years from now, by someone who has never read this file.
+
+### 3. One kill switch
+
+```
+var PDF_IN = true;   // false switches PDF reading off entirely
+```
+
+Setting it to `false` must always be enough to turn the feature off completely: the picker goes back to images only, the door stays shut, and nothing else in the app changes. If a change would make that untrue, the change is wrong.
+
+### 4. Forbidden, always
+
+- PDF logic anywhere outside the fenced block.
+- Any downstream function branching on "did this come from a PDF".
+- Any state, flag, or field recording a photo's PDF origin that is read outside the block.
+- Editing the vendored library. It is frozen at the committed version — never patched, never silently updated.
+- Letting a PDF failure take anything else down: the block catches its own errors and reports them in both languages, and images keep working.
+
+### 5. The duty to warn
+
+If a future feature cannot be built without breaking this isolation, **say so in the chat before building it** — name exactly what it breaks and what removal will cost afterwards — and let the user decide. Never quietly weaken the isolation because it makes a feature easier to write.
+
+### 6. The removal recipe
+
+Kept current with every release that touches this area. To remove PDF reading completely:
+
+1. Delete everything between the `PDF IN` markers in `index.html`.
+2. Delete the `PDF_IN` switch line.
+3. Delete the single call to the door at the file picker.
+4. Restore the picker's attribute to `accept="image/*"`.
+5. Delete the PDF status strings from `STR` — both languages.
+6. Delete the vendored library file from the repository.
+7. Bump the version and commit forward. Never revert history.
+
+Nothing else in `index.html` may refer to PDF. **The day steps 1–6 stop being the whole list, rules 1–4 have been broken and the file must be brought back into line before anything else ships.**
+
+### Not covered by any of this
+
+**PDF output** — building a PDF out of already-compressed images — is our own code: no library, no dependency, no foreign anything. It is an ordinary feature of the app, removable like any other, and none of the rules above apply to it.
 
 ## Communicating with the user
 
