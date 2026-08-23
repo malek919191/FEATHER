@@ -121,6 +121,10 @@
   .seqBtn[disabled]{opacity:.32;cursor:default}
   input[type=file]{display:none}
   .status{font-family:var(--mono);font-size:12px;color:var(--ink-soft);text-align:center;margin:12px 0 0;min-height:16px}
+  /* the status line is empty most of the time, and an empty line that still
+     holds its height leaves a band of nothing between the buttons and the
+     first card — so when there is no message it takes no room at all */
+  .status:empty{margin:0;min-height:0}
   .status.err{color:var(--stamp)}
 
   .stubs{margin-top:22px;display:flex;flex-direction:column;gap:20px}
@@ -311,7 +315,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.12.1</span>
+      <span class="ver">v1.12.2</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
