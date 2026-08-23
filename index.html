@@ -67,6 +67,7 @@
   .row6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}
   .opt{appearance:none;-webkit-appearance:none;background:#FDFCF8;cursor:pointer;
     border:1px solid var(--rule);border-radius:var(--r);padding:10px 2px 9px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;color:#16212B;font-family:var(--sans);
     font-size:12px;font-weight:650;line-height:1.15;transition:background .15s,border-color .15s,opacity .15s}
   .opt small{display:block;font-family:var(--mono);font-size:9px;font-weight:400;
@@ -292,7 +293,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.7</span>
+      <span class="ver">v1.7.1</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -300,8 +301,8 @@
   <div class="label" data-t="lFormat">Format</div>
   <div class="row3" id="formats">
     <button class="opt" data-f="src" aria-pressed="true" data-t="fSource">Source<small data-t="sOrig">Orig</small></button>
-    <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG<small data-t="sLossy">Lossy</small></button>
-    <button class="opt" data-f="image/png" aria-pressed="false">PNG<small data-t="sLossless">Lossless</small></button>
+    <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG</button>
+    <button class="opt" data-f="image/png" aria-pressed="false">PNG</button>
   </div>
 
   <div class="label" data-t="lLongest">Longest Side</div>
@@ -460,7 +461,7 @@
   var STR = {
     en: {
       onDevice:"On-Device", update:"\u21BB Update",
-      lFormat:"Format", fSource:"Source", sOrig:"Orig", sLossy:"Lossy", sLossless:"Lossless",
+      lFormat:"Format", fSource:"Source", sOrig:"Orig",
       lLongest:"Longest Side", sPx:"Px", fCustom:"Custom",
       fW:"W", fH:"H", pW:"Width", pH:"Height",
       lQuality:"Quality", qOff:"Quality \u2014 Not Used Here",
@@ -486,7 +487,7 @@
     },
     ar: {
       onDevice:"على الجهاز", update:"\u21BB تحديث",
-      lFormat:"الصيغة", fSource:"الأصل", sOrig:"كما هي", sLossy:"بفقدان", sLossless:"بلا فقدان",
+      lFormat:"الصيغة", fSource:"الأصل", sOrig:"كما هي",
       lLongest:"الضلع الأطول", sPx:"بكسل", fCustom:"مخصص",
       fW:"عرض", fH:"ارتفاع", pW:"العرض", pH:"الارتفاع",
       lQuality:"الجودة", qOff:"الجودة \u2014 لا تستخدم هنا",
