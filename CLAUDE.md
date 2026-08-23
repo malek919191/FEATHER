@@ -19,6 +19,7 @@ It is designed as a mini PWA for mobile, particularly iOS — see the `apple-mob
 7. **Before/after compare viewer**: a drag slider comparing the original against the compressed result, showing dimensions and byte size for each. Changing sharpness here re-encodes that photo at its real output size, so the figures shown are the ones that will save.
 8. **Sharing** via `navigator.share` (Web Share API) — opens the iOS share sheet so the user can save to Photos or Files.
 9. **Press and hold a photo in the list**: it is magnified 2x, anchored under the finger and dragged 1:1 with it, and steps through compressed → original → compressed (three quarters of a second, then a second and a half), with a tag naming whichever is showing. Lifting the finger restores the card in one frame. The photos themselves are `pointer-events:none` so the press lands on `.shot` instead — an image under the touch is what makes iOS open its own full-screen preview over the app.
+10. **Language**: a two-part toggle beneath the app name switches the whole interface between English and Arabic, and the choice is kept in `localStorage` under `fw-lang` so the app reopens in it. Every visible string lives in the `STR` object and is written into the `data-t` / `data-tp` / `data-ta` marks in the markup by `applyLang()`; a switch touches text only and never re-runs the pipeline, so results already on screen keep their exact bytes. `setStatus()` therefore stores a key rather than finished text, and `paintStatus()` / `paintSave()` repaint whatever is showing. Arabic letters join up, so `body.ar` lifts the monospace face and the letter-spacing from the labels and gives the running text its own `direction:rtl`; the layout itself is not mirrored.
 
 ### Processing pipeline
 
@@ -63,7 +64,7 @@ v2.7  →  cosmetic tweak       →  v2.7.1
 
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
-The current version in `index.html` is **`v1.6.6`**.
+The current version in `index.html` is **`v1.7`**.
 
 ## Git workflow and release history
 
