@@ -297,7 +297,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.11</span>
+      <span class="ver">v1.12</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -796,7 +796,7 @@
   /* the copy number, kept in the browser so closing the app and coming back
      the same day carries on instead of repeating a name */
   var fwSeqDay = null, fwSeqMap = {};
-  function fwSeq(key){
+  function fwSeqLoad(){
     var day = fwStamp();
     if (fwSeqDay !== day){
       fwSeqDay = day; fwSeqMap = {};
@@ -805,22 +805,45 @@
         if (raw && raw.d === day && raw.n) fwSeqMap = raw.n;
       } catch (e){}
     }
-    var n = (fwSeqMap[key] || 0) + 1;
-    fwSeqMap[key] = n;
-    try { localStorage.setItem("fw-seq", JSON.stringify({ d: day, n: fwSeqMap })); } catch (e){}
+  }
+  function fwSeqSave(){
+    try { localStorage.setItem("fw-seq", JSON.stringify({ d: fwSeqDay, n: fwSeqMap })); } catch (e){}
+  }
+  /* the number the next save would use, without spending it */
+  function fwNext(key){ fwSeqLoad(); return (fwSeqMap[key] || 0) + 1; }
+  /* spend it — called when a file is actually handed to the share sheet */
+  function fwTake(key){
+    var n = fwNext(key);
+    fwSeqMap[key] = n; fwSeqSave();
     return n;
   }
+  /* and give it back when the share sheet is dismissed without saving */
+  function fwGive(key){
+    fwSeqLoad();
+    if (fwSeqMap[key] > 0){ fwSeqMap[key]--; fwSeqSave(); }
+  }
 
-  /* reserved once per set of picked files, so changing the size or the quality
-     re-encodes without burning a new copy number */
+  /* the name minus its copy number, fixed for as long as the files are loaded */
   var srcBase = [], outBase = [];
   function fwReserve(files){
     srcBase = files.map(function(f){ return fwClean(f && f.name); });
-    outBase = srcBase.map(function(b){
-      return b + "_FW_" + fwStamp() + "_" + fwPad(fwSeq(b));
-    });
+    outBase = srcBase.map(function(b){ return b + "_FW_" + fwStamp(); });
   }
-  function outName(i, mime){ return (outBase[i] || "photo") + "." + extOf(mime); }
+  function fwKey(i){ return srcBase[i] || "photo"; }
+
+  /* what the card shows and what the next save will produce. The number is not
+     spent until the file reaches the share sheet, so re-encoding at a different
+     size or quality costs nothing — but saving the same photo twice, however
+     it was compressed in between, gives the second one its own number. */
+  function outName(i, mime){
+    return (outBase[i] || "photo") + "_" + fwPad(fwNext(fwKey(i))) + "." + extOf(mime);
+  }
+  function repaintNames(){
+    for (var i = 0; i < stubEls.length; i++){
+      var el = stubEls[i], o = el && el.querySelector(".out");
+      if (o && sourceFiles[i]) o.textContent = outName(i, outMime(sourceFiles[i]));
+    }
+  }
   function toBlob(c, mime, q){
     return new Promise(function(res){
       if (mime === "image/png") c.toBlob(function(b){ res(b); }, "image/png");
@@ -1833,14 +1856,15 @@
       var first = 0;
       while (first < results.length && !results[first]) first++;
       var pb = (srcBase[first] || "FEATHER").replace(/_SHEET\d+$/, "");
-      var pn = pb + "_FW_" + fwStamp() + "_" + fwPad(fwSeq("pdf:" + pb)) + ".pdf";
+      var pk = "pdf:" + pb;
+      var pn = pb + "_FW_" + fwStamp() + "_" + fwPad(fwTake(pk)) + ".pdf";
       var one = new File([pdfOutBuild(await pdfOutPages(files))], pn,
                          { type: "application/pdf" });
       setStatus("");
       if (navigator.canShare && navigator.canShare({ files: [one] })){
         try { await navigator.share({ files: [one] }); }
-        catch (e){ if (!e || e.name !== "AbortError") setStatus("errShare", true); }
-      } else setStatus("errShare", true);
+        catch (e){ fwGive(pk); if (!e || e.name !== "AbortError") setStatus("errShare", true); }
+      } else { fwGive(pk); setStatus("errShare", true); }
     } catch (e){
       setStatus("pdfOutErr", true);
     }
@@ -1849,12 +1873,23 @@
   });
 
   shBtn.addEventListener("click", async function(){
-    var files = readyFiles();
-    if (!files.length) return;
+    var idx = [], i;
+    for (i = 0; i < results.length; i++) if (results[i]) idx.push(i);
+    if (!idx.length) return;
+
+    var keys = [], files = idx.map(function(i){
+      var k = fwKey(i), n = fwTake(k);
+      keys.push(k);
+      var nm = (outBase[i] || "photo") + "_" + fwPad(n) + "." + extOf(results[i].type);
+      results[i] = new File([results[i]], nm, { type: results[i].type });
+      return results[i];
+    });
+    var undo = function(){ keys.forEach(fwGive); repaintNames(); };
+
     if (navigator.canShare && navigator.canShare({ files: files })){
-      try { await navigator.share({ files: files }); return; }
-      catch (e){ if (e && e.name === "AbortError") return; }
-    }
+      try { await navigator.share({ files: files }); repaintNames(); return; }
+      catch (e){ undo(); if (e && e.name === "AbortError") return; }
+    } else { undo(); }
     setStatus("errShare", true);
   });
 
