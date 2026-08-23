@@ -106,6 +106,19 @@
   .btn.ghost{background:#FDFCF8;color:#16212B;border:1px solid #16212B}
   .btn[disabled]{opacity:.32;cursor:default}
   .sub{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);text-align:center;margin:9px 0 0}
+  /* the copy number: one knob that moves every loaded photo together, so ten
+     pages of a document are re-numbered with one press instead of ten */
+  .seqRow{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px}
+  .seqRow.off{display:none}
+  .seqLbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    color:var(--ink-soft);text-transform:uppercase}
+  .seqVal{font-family:var(--mono);font-size:14px;font-weight:650;color:var(--ink);
+    min-width:24px;text-align:center}
+  .seqBtn{width:30px;height:30px;padding:0;border-radius:999px;border:1px solid #16212B;
+    background:#FDFCF8;color:#16212B;font-family:var(--sans);font-size:16px;font-weight:650;
+    line-height:1;cursor:pointer;-webkit-appearance:none}
+  .seqBtn:active{opacity:.85}
+  .seqBtn[disabled]{opacity:.32;cursor:default}
   input[type=file]{display:none}
   .status{font-family:var(--mono);font-size:12px;color:var(--ink-soft);text-align:center;margin:12px 0 0;min-height:16px}
   .status.err{color:var(--stamp)}
@@ -270,11 +283,12 @@
      full stop is laid out at the wrong end of the line */
   body.ar .label, body.ar .form-no, body.ar .refresh, body.ar .fieldwrap span,
   body.ar .opt small, body.ar .sub, body.ar .status,
-  body.ar .tags, body.ar .peekTag, body.ar #viewSharp .vLabel{
+  body.ar .tags, body.ar .peekTag, body.ar #viewSharp .vLabel, body.ar .seqLbl{
     font-family:var(--sans);letter-spacing:0;text-transform:none}
   body.ar .label{font-size:12px}
   body.ar .form-no, body.ar .refresh, body.ar .fieldwrap span{font-size:11px}
   body.ar .opt small{font-size:9.5px}
+  body.ar .seqLbl{font-size:11px}
   body.ar .sub{font-size:11.5px}
   body.ar .status{font-size:12.5px}
   body.ar .tags, body.ar .peekTag, body.ar #viewSharp .vLabel{font-size:10.5px}
@@ -297,7 +311,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.11.1</span>
+      <span class="ver">v1.12</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -346,6 +360,12 @@
     <button class="btn" id="pick" data-t="bChoose">Choose Photos</button>
     <button class="btn ghost" id="share" disabled>Save</button>
     <button class="btn ghost" id="pdfOut" data-t="pdfOutSave" disabled>Save PDF</button>
+  </div>
+  <div class="seqRow off" id="seqRow">
+    <span class="seqLbl" data-t="lSeq">Copy No.</span>
+    <button class="seqBtn" id="seqDown" type="button" data-ta="aSeqDown" aria-label="Lower the copy number">&minus;</button>
+    <span class="seqVal" id="seqVal">01</span>
+    <button class="seqBtn" id="seqUp" type="button" data-ta="aSeqUp" aria-label="Raise the copy number">+</button>
   </div>
   <p class="sub" id="sub" data-t="subHint">Enter a width and a height</p>
 
@@ -456,6 +476,7 @@
   var picker = $("picker"), pickBtn = $("pick"), subEl = $("sub"),
       statusEl = $("status"), stubs = $("stubs"), totalBox = $("total"),
       shBtn = $("share"), pdfOutBtn = $("pdfOut"),
+      seqRow = $("seqRow"), seqVal = $("seqVal"), seqDown = $("seqDown"), seqUp = $("seqUp"),
       viewer = $("viewer"), stage = $("stage"),
       handle = $("handle"), imgOld = $("imgOld"), imgNew = $("imgNew"),
       levelsRow = $("levels"), qLabel = $("qLabel"),
@@ -473,6 +494,7 @@
       lQuality:"Quality", qOff:"Quality \u2014 Not Used Here",
       qHighest:"Highest", qHigh:"High", qMed:"Med", qLow:"Low", qLeast:"Least",
       lSharp:"Sharpness", bChoose:"Choose Photos", bSave:"Save",
+      lSeq:"Copy No.", aSeqDown:"Lower the copy number", aSeqUp:"Raise the copy number",
       pdfOutSave:"Save PDF", pdfOutBusy:"Building the PDF\u2026",
       pdfOutErr:"Could not build the PDF.",
       subHint:"Enter a width and a height", bTotal:"Total",
@@ -501,6 +523,7 @@
       lQuality:"الجودة", qOff:"الجودة \u2014 لا تستخدم هنا",
       qHighest:"الأعلى", qHigh:"عالية", qMed:"متوسطة", qLow:"منخفضة", qLeast:"الأدنى",
       lSharp:"الحدة", bChoose:"اختر الصور", bSave:"حفظ",
+      lSeq:"رقم النسخة", aSeqDown:"إنقاص رقم النسخة", aSeqUp:"زيادة رقم النسخة",
       pdfOutSave:"حفظ PDF", pdfOutBusy:"جاري إنشاء ملف PDF\u2026",
       pdfOutErr:"تعذر إنشاء ملف PDF.",
       subHint:"أدخل العرض أو الارتفاع", bTotal:"المجموع",
@@ -693,6 +716,7 @@
     shBtn.disabled = !(ready() && readyFiles().length);
     pdfOutBtn.disabled = shBtn.disabled || pdfOutBusy;
     subEl.style.display = (sourceFiles.length && !ready()) ? "block" : "none";
+    fwPaintSeq();
   }
 
   function setFormatFromFiles(){
@@ -831,6 +855,50 @@
   }
   function fwKey(i){ return srcBase[i] || "photo"; }
 
+  /* the copy number belongs to each photo on its own, so the two buttons move
+     every loaded photo by the same step rather than forcing them all onto one
+     number — photos sitting on different numbers keep the gaps between them.
+     Two files that clean down to the same name share one counter, hence seen. */
+  function fwSeqRange(){
+    fwSeqLoad();
+    var lo = null, hi = null, i, v;
+    for (i = 0; i < sourceFiles.length; i++){
+      v = fwSeqMap[fwKey(i)] || 0;
+      if (lo === null || v < lo) lo = v;
+      if (hi === null || v > hi) hi = v;
+    }
+    return { lo: lo || 0, hi: hi || 0 };
+  }
+  function fwSeqShift(d){
+    if (!sourceFiles.length) return;
+    var r = fwSeqRange();
+    /* refuse the whole press at either end, so one photo hitting the wall
+       never flattens it onto the others */
+    if (d < 0 && r.lo <= 0) return;
+    if (d > 0 && r.hi >= 98) return;
+    var seen = {}, i, k;
+    for (i = 0; i < sourceFiles.length; i++){
+      k = fwKey(i);
+      if (seen[k] === 1) continue;
+      seen[k] = 1;
+      fwSeqMap[k] = (fwSeqMap[k] || 0) + d;
+    }
+    fwSeqSave();
+    repaintNames();
+  }
+  /* the readout carries the first photo's next number; each card carries its own */
+  function fwPaintSeq(){
+    var on = sourceFiles.length > 0;
+    seqRow.classList.toggle("off", !on);
+    if (!on) return;
+    var r = fwSeqRange();
+    seqVal.textContent = fwPad((fwSeqMap[fwKey(0)] || 0) + 1);
+    seqDown.disabled = r.lo <= 0;
+    seqUp.disabled = r.hi >= 98;
+  }
+  seqDown.addEventListener("click", function(){ fwSeqShift(-1); });
+  seqUp.addEventListener("click", function(){ fwSeqShift(1); });
+
   /* what the card shows and what the next save will produce. The number is not
      spent until the file reaches the share sheet, so re-encoding at a different
      size or quality costs nothing — but saving the same photo twice, however
@@ -843,6 +911,7 @@
       var el = stubEls[i], o = el && el.querySelector(".out");
       if (o && sourceFiles[i]) o.textContent = outName(i, outMime(sourceFiles[i]));
     }
+    fwPaintSeq();
   }
   function toBlob(c, mime, q){
     return new Promise(function(res){
