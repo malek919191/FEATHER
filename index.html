@@ -113,7 +113,8 @@
   .stubs{margin-top:22px;display:flex;flex-direction:column;gap:20px}
   .stub{background:#FDFCF8;border-radius:var(--r);overflow:hidden;box-shadow:0 1px 0 rgba(22,33,43,.14)}
   .stub .meta{padding:12px 14px 11px;position:relative;border-bottom:1px dashed var(--rule)}
-  .stub .name{font-family:var(--mono);font-size:11px;color:var(--ink-soft);word-break:break-all;margin-bottom:4px;padding-right:34px}
+  .stub .name{font-family:var(--mono);font-size:11px;color:var(--ink-soft);word-break:break-all;margin-bottom:2px;padding-right:34px}
+  .stub .out{font-family:var(--mono);font-size:11px;color:#16212B;word-break:break-all;margin-bottom:4px;padding-right:34px}
   .stub .nums{font-family:var(--mono);font-size:15px;color:#16212B}
   .stub .nums .old{color:var(--ink-soft)}
   .stub .nums .old.cut{text-decoration:line-through}
@@ -296,7 +297,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.10</span>
+      <span class="ver">v1.11</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -716,6 +717,7 @@
   function acceptFiles(files){
     if (!files || !files.length) return;
     sourceFiles = files;
+    fwReserve(sourceFiles);
     edits = sourceFiles.map(function(){ return null; });
     sharps = sourceFiles.map(function(){ return null; });
     baseRatio = null; customW = null; customH = null;
@@ -768,10 +770,57 @@
   function paintSave(){
     shBtn.textContent = saveN > 1 ? t("bSave") + " " + saveN : t("bSave");
   }
-  function tag(){
-    var n = new Date(), p = function(v){ return (v<10?"0":"") + v; };
-    return "" + n.getFullYear() + p(n.getMonth()+1) + p(n.getDate()) + "-" + p(n.getHours()) + p(n.getMinutes());
+  /* ---- naming -------------------------------------------------------------
+     Every saved file is <source name>_FW_<yymmdd>_<nn>, extension in lower
+     case: the name it came in with, this app's mark, today's date, and a copy
+     number starting at 01. The date already separates names from different
+     days, so the number only has to separate repeats within one day — which is
+     why the counter is stored per day, dropped when the date turns over, and
+     therefore never grows. */
+  function fwStamp(){
+    var n = new Date(), p = function(v){ return (v < 10 ? "0" : "") + v; };
+    return p(n.getFullYear() % 100) + p(n.getMonth() + 1) + p(n.getDate());
   }
+  function fwPad(n){ return (n < 10 ? "0" : "") + n; }
+
+  /* spaces become underscores and characters a filesystem refuses are dropped.
+     Arabic and any other letters are left alone — they save and open fine. */
+  function fwClean(v){
+    return (String(v || "").replace(/\.[^.\/\\]+$/, "")
+      .replace(/[\/\\:*?"<>|]+/g, "_")
+      .replace(/\s+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")) || "photo";
+  }
+
+  /* the copy number, kept in the browser so closing the app and coming back
+     the same day carries on instead of repeating a name */
+  var fwSeqDay = null, fwSeqMap = {};
+  function fwSeq(key){
+    var day = fwStamp();
+    if (fwSeqDay !== day){
+      fwSeqDay = day; fwSeqMap = {};
+      try {
+        var raw = JSON.parse(localStorage.getItem("fw-seq") || "null");
+        if (raw && raw.d === day && raw.n) fwSeqMap = raw.n;
+      } catch (e){}
+    }
+    var n = (fwSeqMap[key] || 0) + 1;
+    fwSeqMap[key] = n;
+    try { localStorage.setItem("fw-seq", JSON.stringify({ d: day, n: fwSeqMap })); } catch (e){}
+    return n;
+  }
+
+  /* reserved once per set of picked files, so changing the size or the quality
+     re-encodes without burning a new copy number */
+  var srcBase = [], outBase = [];
+  function fwReserve(files){
+    srcBase = files.map(function(f){ return fwClean(f && f.name); });
+    outBase = srcBase.map(function(b){
+      return b + "_FW_" + fwStamp() + "_" + fwPad(fwSeq(b));
+    });
+  }
+  function outName(i, mime){ return (outBase[i] || "photo") + "." + extOf(mime); }
   function toBlob(c, mime, q){
     return new Promise(function(res){
       if (mime === "image/png") c.toBlob(function(b){ res(b); }, "image/png");
@@ -1044,12 +1093,14 @@
           delIcon() +
           '<div class="stamp idle"></div>' +
           '<div class="name"></div>' +
+          '<div class="out"></div>' +
           '<div class="nums"><span class="old"></span></div>' +
           '<div class="dim"></div>' +
         '</div>' +
         '<div class="shot">' + editIcon() + '<img alt=""></div>';
       el.querySelector(".stamp").textContent = labelOf(f.type);
       el.querySelector(".name").textContent = f.name;
+      el.querySelector(".out").textContent = outName(i, outMime(f));
       el.querySelector(".old").textContent = fmt(f.size);
       el.querySelector(".dim").textContent = p.w + "\u00D7" + p.h;
       el.querySelector(".shot img").src = p.url;
@@ -1073,7 +1124,7 @@
     totalBox.classList.add("hidden");
     shBtn.disabled = true;
 
-    var base = tag(), tOld = 0, tNew = 0, i;
+    var tOld = 0, tNew = 0, i;
     var longest = longestTarget();
 
     for (i = 0; i < sourceFiles.length; i++){
@@ -1086,7 +1137,7 @@
         var q = quality === null ? 0.75 : quality;
         var r = await process(f, edits[i], longest, q, mime, effSharp(i));
         if (mine !== token) break;
-        var out = new File([r.blob], "fw-" + base + "-" + (i+1) + "." + extOf(mime), { type: mime });
+        var out = new File([r.blob], outName(i, mime), { type: mime });
         results[i] = out;
         tOld += f.size; tNew += r.blob.size;
         addStub(out, f, r, i);
@@ -1141,6 +1192,7 @@
         delIcon() +
         '<div class="stamp"></div>' +
         '<div class="name"></div>' +
+        '<div class="out"></div>' +
         '<div class="nums"><span class="old"></span>' +
         '<span class="arrow">&rarr;</span><span class="new"></span></div>' +
         '<div class="dim"></div>' +
@@ -1150,6 +1202,7 @@
         '<span class="peekTag"></span></div>';
 
     el.querySelector(".name").textContent = original.name;
+    el.querySelector(".out").textContent = file.name;
     fillStub(el, file, original, r);
 
     /* kept on the node so a later reprocess can swap it without rebinding */
@@ -1227,7 +1280,7 @@
       var r = await process(f, edits[idx], longestTarget(), q, mime, effSharp(idx));
       if (mine !== sharpToken || base !== token){ $("viewSharp").classList.remove("busy"); return; }
 
-      var name = results[idx] ? results[idx].name : "fw-" + tag() + "-" + (idx+1) + "." + extOf(mime);
+      var name = results[idx] ? results[idx].name : outName(idx, mime);
       var out = new File([r.blob], name, { type: mime });
       results[idx] = out;
 
@@ -1777,8 +1830,12 @@
     pdfOutBtn.disabled = true;
     setStatus("pdfOutBusy");
     try {
-      var one = new File([pdfOutBuild(await pdfOutPages(files))],
-                         "fw-" + tag() + ".pdf", { type: "application/pdf" });
+      var first = 0;
+      while (first < results.length && !results[first]) first++;
+      var pb = (srcBase[first] || "FEATHER").replace(/_SHEET\d+$/, "");
+      var pn = pb + "_FW_" + fwStamp() + "_" + fwPad(fwSeq("pdf:" + pb)) + ".pdf";
+      var one = new File([pdfOutBuild(await pdfOutPages(files))], pn,
+                         { type: "application/pdf" });
       setStatus("");
       if (navigator.canShare && navigator.canShare({ files: [one] })){
         try { await navigator.share({ files: [one] }); }
@@ -1894,7 +1951,7 @@
     var doc = await L.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
     try {
       var n = Math.min(doc.numPages, PDF_IN_MAXPAGES);
-      var base = (file.name || "pdf").replace(/\.pdf$/i, "");
+      var base = fwClean(file.name);
       for (var p = 1; p <= n; p++){
         if (mine !== pdfInRun) return;
         setStatus("pdfInPage", false, [p, n]);
@@ -1906,7 +1963,7 @@
           c = canvasOf(Math.max(1, Math.round(vp.width)), Math.max(1, Math.round(vp.height)));
           await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
           var b = await toBlob(c, "image/jpeg", 0.95);
-          out.push(new File([b], base + "-" + p + ".jpg", { type: "image/jpeg" }));
+          out.push(new File([b], base + "_SHEET" + fwPad(p) + ".jpg", { type: "image/jpeg" }));
         } finally { page.cleanup(); kill(c); }
       }
     } finally { await doc.destroy(); }
