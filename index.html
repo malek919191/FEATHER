@@ -327,7 +327,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.15</span>
+      <span class="ver">v1.16</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -655,6 +655,27 @@
       location.replace(location.href.replace(/[?#].*$/, "") + "?u=" + Date.now());
     }, 110);
   });
+
+  /* ===== OFFLINE — start · this whole block is deletable ===================
+     sw.js, the file beside this one, answers from a stored copy when the phone
+     has no signal, which is the only reason the app opens without one. It asks
+     the network first every time, so the Update button above and a new version
+     pushed to GitHub both behave exactly as they did before it existed.
+
+     To remove the feature: delete this block and delete sw.js. Nothing else in
+     the app knows either of them exists, and nothing needs putting back. A page
+     opened straight off the disk never reaches this — the browser withholds
+     serviceWorker outside a real https address — so the file on its own is
+     untouched by all of it.
+  */
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function(){
+      try {
+        navigator.serviceWorker.register("sw.js").catch(function(){});
+      } catch (e){}
+    });
+  }
+  /* ===== OFFLINE — end ==================================================== */
 
   function bind(containerId, cb){
     var btns = $(containerId).querySelectorAll(".opt");
