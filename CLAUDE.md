@@ -53,6 +53,8 @@ It is designed as a mini PWA for mobile, particularly iOS — see the `apple-mob
 14. **HEIC input**: the picker accepts `.heic` and `.heif` instead of greying them out, so a photo that arrived from the Files app or a message compresses like any other. There is no library and no decoder of ours — the browser does the decoding, and a current iPhone does it. Where a browser cannot, the photo shows a red card naming HEIC as the reason (`errHeic`) instead of the generic one, and the other photos carry on. Note the trade this makes: with the picker declaring HEIC, iOS may hand over the original file rather than the JPEG it used to transcode for us — better quality, but it does put the decoding on Safari.
 15. **Language**: a two-part toggle beneath the app name switches the whole interface between English and Arabic, and the choice is kept in `localStorage` under `fw-lang` so the app reopens in it. Every visible string lives in the `STR` object and is written into the `data-t` / `data-tp` / `data-ta` marks in the markup by `applyLang()`; a switch touches text only and never re-runs the pipeline, so results already on screen keep their exact bytes. `setStatus()` therefore stores a key rather than finished text, and `paintStatus()` / `paintSave()` repaint whatever is showing. Arabic letters join up, so `body.ar` lifts the monospace face and the letter-spacing from the labels and gives the running text its own `direction:rtl`; the layout itself is not mirrored.
 16. **Target size**: a `Target Size` field beneath `Quality`. A number of KB in it and every photo comes out under that size; an empty field is off and the app behaves exactly as it always did. It adds no row of buttons of its own — it presses the ones already there. While a target is in force the `Longest Side` and `Quality` rows dim, their labels read `— Chosen`, and the step each photo landed on is shown pressed; each card carries its own figures (`2400×1800 → 900×675 · Q75`) because photos in one batch can land differently and the rows can only show where most of them ended up. Tapping either row, or clearing the field, hands both rows back and drops the target. The order it spends things in is the agreed one: quality first, never below `Med` — that is where JPEG stops looking soft and starts looking blocky — and only then the longest side, a rung at a time, with `Low` and `Least` held back as the last resort under 350px. Two promises: a file never comes out over the size asked for, and a target nothing can reach says so on the card in red (`Smallest it can go`) rather than quietly handing back something bigger. A photo already under the target is left alone rather than inflated to fill it. PNG has no quality knob, so there it searches the size alone.
+17. **Offline**: on the phone the app used to be fetched from the network every time it was opened, so with no bars it did not open at all. `sw.js`, beside `index.html`, keeps a copy of the page and hands it over when the network cannot be reached. It asks the network **first**, every time, and reaches the copy only when that fails — that order is the whole design and must never be turned around: the ordinary arrangement answers from the store without asking, which is faster and which would freeze the app on whatever it saw first, make the `Update` button meaningless, and make every change unverifiable on the phone. The PDF library is not fetched in advance; it is kept only if it was already fetched, so a user who never opens a PDF still never pays the megabyte. See **The publishing wrapper** below for what may and may not live in that file.
+18. **Home-screen icon**: a feather in ink on the app's paper blue with the quill in stamp red, written into the `<head>` as data rather than added beside the file. Without it iOS invents a grey letter tile, which left several shortcuts to different versions looking identical. iOS takes the icon **once**, at the moment `Add to Home Screen` is tapped, and never asks again — a shortcut already on a home screen keeps its old tile no matter what the file says, and only a freshly added one picks up a change.
 
 ### Processing pipeline
 
@@ -80,7 +82,7 @@ Each image is processed independently and asynchronously, guarded by a `token` c
 
 ## Structure and development
 
-- **No build step, no package manager, no external dependencies.** `index.html` holds everything: HTML + CSS (in `<style>`) + JS (a single `"use strict"` IIFE in one `<script>`).
+- **No build step, no package manager, no external dependencies.** `index.html` holds everything: HTML + CSS (in `<style>`) + JS (a single `"use strict"` IIFE in one `<script>`). `sw.js` sits beside it and holds no app code at all — see **The publishing wrapper** below.
 - **No test suite and no linter are configured in this project.**
 - **To run or preview**: open `index.html` directly in a browser, or serve it statically (e.g. `python3 -m http.server`). There are no build or npm commands, because there is no `package.json`.
 - The code style in the file is roughly ES5: `var`, traditional `function` declarations, no `class`, arrow functions, or modern async/await except in a few places. No framework.
@@ -113,7 +115,7 @@ v2.7  →  cosmetic tweak       →  v2.7.1
 
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
-The current version in `index.html` is **`v1.15`**.
+The current version in `index.html` is **`v1.16.1`**.
 
 ## Git workflow and release history
 
@@ -159,7 +161,7 @@ This has hard consequences for every change shipped:
 
 1. **Never send any image or user data to any server or external API.** The app's core promise is "Nothing leaves your phone" (stated explicitly in the UI) — adding any network request (fetch/XHR) for image processing breaks that promise and is unacceptable.
 2. **Never add an external dependency** (no CDN, no npm package, no framework such as React or Vue). The app must remain a single self-contained file that works fully offline.
-3. **Do not introduce build tools or bundlers** (webpack, vite, etc.) or split the code across multiple files unless explicitly asked — the simplicity of one copyable, directly-openable file is a deliberate feature.
+3. **Do not introduce build tools or bundlers** (webpack, vite, etc.) or split the code across multiple files unless explicitly asked — the simplicity of one copyable, directly-openable file is a deliberate feature. The one file allowed beside it is the publishing wrapper, under the rules in **The publishing wrapper** — and it is not an exception to this one, because it carries no app code.
 4. **Preserve iOS/PWA compatibility**: any change to `<head>` or to the meta tags (`viewport`, `apple-mobile-web-app-*`, `theme-color`, `color-scheme`) must stay compatible with current iOS Safari behaviour, and the `env(safe-area-inset-*)` handling must not be removed.
 5. **Preserve the `token` counter logic** in async operations (`showOriginals`, `run`, and so on) whenever touching the processing pipeline — it is what prevents stale results from racing in when the user changes settings mid-processing.
 6. **Do not simplify or replace the hand-written algorithms** (`stepDown` progressive downscaling, `sharpen` unsharp mask, `cropTilted` tilt transform) with external libraries or browser alternatives (such as the `image-rendering` CSS property) without an explicit request — these are deliberate choices that preserve image quality without dependencies.
@@ -168,6 +170,29 @@ This has hard consequences for every change shipped:
 9. **Match the existing code style** (ES5-ish, no frameworks, the same terse variable naming already used in the file) rather than rewriting it in a modern idiom, to keep the file coherent and diffs small.
 10. **Never break the PDF isolation contract** — see the section of that name below. PDF-reading code stays inside its fenced block, behind its kill switch, and out of every other function in the file.
 11. **Any UI change (colours, fonts, layout) must preserve the current visual character** — the "paper/receipt" palette (`--paper`, `--card`, `--ink`, and `--stamp` in red as a rubber-stamp accent) — unless a new design is explicitly requested.
+12. **Never let app logic into the publishing wrapper** — see the section of that name below. `sw.js` is a delivery detail, not part of the app, and `index.html` must stay able to run with it deleted.
+
+## The publishing wrapper
+
+`index.html` is the app. `sw.js` is not — it is how the app is *delivered* to a phone, and it exists for exactly one reason: without it the app cannot open with no signal, because a service worker is only ever registered from a real file path. A script written inside the page cannot become one; wrapping it in a Blob URL does not work either, because a worker's scope is computed from where its file actually sits and a Blob has nowhere. That is a structural fact of the browser, not a gap to be worked around.
+
+**The rule the user agreed to, in his words:** the constraint is not "one file" any more, it is **"one independent file, plus an optional publishing wrapper"**. What makes that honest is the independence, and it is testable: delete `sw.js` and the app is unchanged except that it stops opening without a signal.
+
+### What may live in the wrapper
+
+Caching, and nothing else. No compression, no cropping, no naming, no encoding, no image code of any kind. It must never see a photo. If a change would put app behaviour into `sw.js`, the change is wrong — the behaviour belongs in `index.html`, where the user's promise that nothing leaves the phone is enforced and auditable in one place.
+
+It also names nothing belonging to the app. It caches whatever goes past it and keeps no list, so the app can grow without the wrapper ever being edited — and so the PDF removal recipe stays exactly three steps, with nothing in `sw.js` to clean up.
+
+### The three properties that must survive every future change
+
+1. **The network is asked first, always.** Not cache-first, not stale-while-revalidate. The user verifies every change by opening the live site on his phone and taking a screenshot; anything that can serve him yesterday's app makes that impossible and is forbidden, however much faster it is.
+2. **`index.html` still runs alone.** Opened straight off a disk it must work in full, with no wrapper and no server. The browser withholds `serviceWorker` outside a real https address, so the registration block is skipped there on its own.
+3. **Removal stays two deletions.** Delete `sw.js`, delete the block marked `OFFLINE` in `index.html`, done — nothing to put back, because nothing in the app was altered to accommodate it. `sw.js` also carries `SW_ON` at its top: setting it to `false` makes the worker an inert corridor and clears what it stored, which is the way to disarm a copy already sitting on a phone that cannot be reached. It deliberately does **not** unregister itself — the page registers the worker on every load, so a self-deleting worker is simply put back, and the two spend the day undoing each other.
+
+### If the wrapper ever grows a second file
+
+It may — a manifest, an icon file, a redirect. Each one is subject to all of the above, and each must be listed here when it is added. **A file that fails property 2 is not a wrapper file, it is the app being split, and the answer to it is no.**
 
 ## PDF: the isolation contract
 
