@@ -57,6 +57,10 @@ Before any of it, `acceptFiles()` receives whatever the picker handed over; PDF 
 
 `decode()` (`createImageBitmap`, falling back to `<img>`) → `cropAndOrient()` (applies crop + rotation + flip with exact coordinate-space transforms) → `stepDown()` (progressive halving rather than a single downscale, to avoid aliasing) → `sharpen()` (a simple unsharp mask via hand-rolled convolution over `ImageData`, skipped entirely at 0) → `toBlob()` for final encoding.
 
+**Colour space.** Every canvas in the pipeline is born in `canvasOf()`, and it takes its space from the source rather than assuming sRGB. `cmSpace()` sniffs the picked file's ICC profile, and if its red primary sits beyond sRGB's — Display P3, which is what an iPhone camera writes, or anything wider — the whole chain runs in `display-p3` and the saved file is tagged to match. Otherwise nothing changes: screenshots, downloads and rendered PDF pages keep the old sRGB path exactly. Without this, drawing a P3 photo onto an sRGB canvas clipped every colour the narrower space could not hold, and a pure red was saved as `233,51,35` instead of `255,0,0` — which reads on the phone as if the compression ate the colour.
+
+Widening is gated on `cmProbe()`, a one-off runtime check that the browser really hands back a P3 context **and** really tags what it encodes. If either is missing, nothing widens and the app behaves exactly as it did before. `pdfOutBuild()` states the space as well: a page that came out wide is written with an `/ICCBased` colour space instead of `/DeviceRGB`, because a reader would otherwise take it for sRGB and flatten precisely what the pipeline just preserved.
+
 A free tilt cannot be expressed as a source rectangle, so `cropAndOrient()` branches to `cropTilted()`, which replays the whole transform at source resolution and lifts the crop out of it. Edits with no tilt keep the original source-rect path, so that path must stay intact.
 
 Each image is processed independently and asynchronously, guarded by a `token` counter that cancels stale work when the user changes settings mid-run (race-condition guard). `results` is keyed by photo index rather than pushed, because the viewer re-encodes a single photo in place; `sharpToken` guards that path the same way.
@@ -96,7 +100,7 @@ v2.7  →  cosmetic tweak       →  v2.7.1
 
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
-The current version in `index.html` is **`v1.12.2`**.
+The current version in `index.html` is **`v1.12.3`**.
 
 ## Git workflow and release history
 

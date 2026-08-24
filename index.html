@@ -315,7 +315,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.12.2</span>
+      <span class="ver">v1.12.3</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -942,10 +942,88 @@
   function dimsOf(b){ return { w: b.width || b.naturalWidth, h: b.height || b.naturalHeight }; }
   function kill(c){ if (c && c.width) { c.width = 1; c.height = 1; } }
 
-  function canvasOf(w, h){
+  /* ---- colour space -------------------------------------------------------
+     Photos out of an iPhone camera are Display P3. A plain canvas is sRGB, so
+     drawing them onto one clips every colour the narrower space cannot hold,
+     and the saturated reds and greens land flat — which reads as if the
+     compression ate them. The canvas therefore follows the source: a wide file
+     is carried wide from end to end, and anything already sRGB (screenshots,
+     downloads, rendered PDF pages) keeps the old path untouched.
+
+     Nothing widens until the whole chain is proven at runtime: the context has
+     to really be P3, and the encoder has to really tag what it writes. If
+     either is missing the app behaves exactly as it did before. */
+  var CM_WIDE = 0.46;        /* red primary X: sRGB 0.436, Display P3 0.515 */
+  var cmOK = null, cmICC = null;
+
+  function u32be(b, i){ return b[i] * 16777216 + (b[i+1] << 16 | b[i+2] << 8 | b[i+3]); }
+
+  /* an ICC profile carries "acsp" 36 bytes in, whatever wrapper holds it */
+  function iccOf(buf){
+    var b = new Uint8Array(buf), n = b.length, i, p, size;
+    for (i = 36; i < n - 4; i++){
+      if (b[i] !== 0x61 || b[i+1] !== 0x63 || b[i+2] !== 0x73 || b[i+3] !== 0x70) continue;
+      p = i - 36; size = u32be(b, p);
+      if (size < 132 || p + size > n) continue;
+      if (u32be(b, p + 128) > 200) continue;
+      return b.subarray(p, p + size);
+    }
+    return null;
+  }
+
+  /* how far out the profile's red primary sits — the whole gamut question */
+  function iccRedX(icc){
+    var n = u32be(icc, 128), i, off = 132, o;
+    for (i = 0; i < n; i++, off += 12){
+      if (off + 12 > icc.length) break;
+      if (icc[off] === 0x72 && icc[off+1] === 0x58 && icc[off+2] === 0x59 && icc[off+3] === 0x5A){
+        o = u32be(icc, off + 4);
+        if (o + 20 > icc.length) return 0;
+        return u32be(icc, o + 8) / 65536;
+      }
+    }
+    return 0;
+  }
+
+  /* one probe decides for the whole session, and keeps the profile bytes the
+     PDF writer needs to say what its pages are */
+  async function cmProbe(){
+    if (cmOK !== null) return cmOK;
+    cmOK = false;
+    try {
+      var c = document.createElement("canvas");
+      c.width = 1; c.height = 1;
+      var x = c.getContext("2d", { alpha: false, colorSpace: "display-p3" });
+      if (x && x.getContextAttributes && x.getContextAttributes().colorSpace === "display-p3"){
+        var b = await toBlob(c, "image/jpeg", 0.9);
+        if (b){
+          var icc = iccOf(await b.arrayBuffer());
+          if (icc && iccRedX(icc) > CM_WIDE){ cmICC = icc; cmOK = true; }
+        }
+      }
+    } catch (e){}
+    return cmOK;
+  }
+
+  /* sniffed once per picked file and kept on it */
+  async function cmSpace(file){
+    if (!(await cmProbe())) return null;
+    if (file._wide === undefined){
+      file._wide = false;
+      try {
+        var icc = iccOf(await file.slice(0, 131072).arrayBuffer());
+        if (icc) file._wide = iccRedX(icc) > CM_WIDE;
+      } catch (e){}
+    }
+    return file._wide ? "display-p3" : null;
+  }
+
+  function canvasOf(w, h, space){
     var c = document.createElement("canvas");
     c.width = w; c.height = h;
-    var x = c.getContext("2d", { alpha: false });
+    var x = null;
+    if (space){ try { x = c.getContext("2d", { alpha: false, colorSpace: space }); } catch (e){} }
+    if (!x) x = c.getContext("2d", { alpha: false });
     x.fillStyle = "#fff"; x.fillRect(0, 0, w, h);
     x.imageSmoothingEnabled = true;
     if (x.imageSmoothingQuality) x.imageSmoothingQuality = "high";
@@ -965,7 +1043,7 @@
 
   /* free tilt cannot use a source rect, so it redraws the whole transform
      and lifts the crop straight out of it */
-  function cropTilted(bmp, bw, bh, edit){
+  function cropTilted(bmp, bw, bh, edit, space){
     var o = orientedSize(bw, bh, edit.rot || 0);
     var sw = Math.max(1, edit.sw), sh = Math.max(1, edit.sh);
 
@@ -975,7 +1053,7 @@
     var ph = Math.max(1, Math.round(sh * k));
 
     var cv = coverScale(o.w, o.h, edit.free);
-    var out = canvasOf(pw, ph);
+    var out = canvasOf(pw, ph, space);
     var x = out.getContext("2d");
     x.scale(k, k);
     x.translate(-edit.sx, -edit.sy);
@@ -1006,8 +1084,8 @@
     return r;
   }
 
-  function cropAndOrient(bmp, bw, bh, edit){
-    if (edit.free) return cropTilted(bmp, bw, bh, edit);
+  function cropAndOrient(bmp, bw, bh, edit, space){
+    if (edit.free) return cropTilted(bmp, bw, bh, edit, space);
 
     var r = toSourceRect(bw, bh, edit);
     r.x = Math.max(0, Math.min(r.x, bw - 1));
@@ -1020,7 +1098,7 @@
     var pw = Math.max(1, Math.round(r.w * k));
     var ph = Math.max(1, Math.round(r.h * k));
 
-    var piece = canvasOf(pw, ph);
+    var piece = canvasOf(pw, ph, space);
     piece.getContext("2d").drawImage(bmp, r.x, r.y, r.w, r.h, 0, 0, pw, ph);
 
     var rot = edit.rot || 0;
@@ -1028,7 +1106,7 @@
 
     var ow = (rot % 180 === 0) ? pw : ph;
     var oh = (rot % 180 === 0) ? ph : pw;
-    var out = canvasOf(ow, oh);
+    var out = canvasOf(ow, oh, space);
     var x = out.getContext("2d");
     x.translate(ow / 2, oh / 2);
     x.rotate(rot * Math.PI / 180);
@@ -1039,22 +1117,22 @@
     return { src: out, w: ow, h: oh, temp: out };
   }
 
-  function buildEdited(bmp, bw, bh, edit){
+  function buildEdited(bmp, bw, bh, edit, space){
     if (!edit) return { src: bmp, w: bw, h: bh, temp: null };
-    return cropAndOrient(bmp, bw, bh, edit);
+    return cropAndOrient(bmp, bw, bh, edit, space);
   }
 
-  function stepDown(src, ow, oh, tw, th){
+  function stepDown(src, ow, oh, tw, th, space){
     var cw = ow, ch = oh, cur = src, canvas = null;
     while (cw > tw * 2 && ch > th * 2){
       cw = Math.max(tw, Math.round(cw / 2));
       ch = Math.max(th, Math.round(ch / 2));
-      var next = canvasOf(cw, ch);
+      var next = canvasOf(cw, ch, space);
       next.getContext("2d").drawImage(cur, 0, 0, cw, ch);
       if (canvas) kill(canvas);
       canvas = next; cur = next;
     }
-    var out = canvasOf(tw, th);
+    var out = canvasOf(tw, th, space);
     out.getContext("2d").drawImage(cur, 0, 0, tw, th);
     if (canvas) kill(canvas);
     return out;
@@ -1080,9 +1158,10 @@
   }
 
   async function process(file, edit, longest, q, mime, sharp){
+    var space = await cmSpace(file);
     var bmp = await decode(file);
     var d0 = dimsOf(bmp);
-    var e = buildEdited(bmp, d0.w, d0.h, edit);
+    var e = buildEdited(bmp, d0.w, d0.h, edit, space);
     var ow = e.w, oh = e.h, w = ow, h = oh;
     var maxSide = Math.max(ow, oh);
 
@@ -1095,7 +1174,7 @@
       h = Math.max(1, Math.round(oh * s));
     }
 
-    var canvas = stepDown(e.src, ow, oh, w, h);
+    var canvas = stepDown(e.src, ow, oh, w, h, space);
     release(bmp);
     if (e.temp) kill(e.temp);
 
@@ -1104,16 +1183,17 @@
     var blob = await toBlob(canvas, mime, q);
     kill(canvas);
     if (!blob) throw new Error("encode");
-    return { blob: blob, refBlob: refBlob, w: w, h: h, ow: ow, oh: oh };
+    return { blob: blob, refBlob: refBlob, w: w, h: h, ow: ow, oh: oh, p3: !!space };
   }
 
   async function previewOnly(file, edit){
+    var space = await cmSpace(file);
     var bmp = await decode(file);
     var d0 = dimsOf(bmp);
-    var e = buildEdited(bmp, d0.w, d0.h, edit);
+    var e = buildEdited(bmp, d0.w, d0.h, edit, space);
     var s = Math.min(1, 1000 / Math.max(e.w, e.h));
     var w = Math.max(1, Math.round(e.w * s)), h = Math.max(1, Math.round(e.h * s));
-    var c = stepDown(e.src, e.w, e.h, w, h);
+    var c = stepDown(e.src, e.w, e.h, w, h, space);
     var blob = await toBlob(c, "image/jpeg", 0.85);
     release(bmp);
     if (e.temp) kill(e.temp);
@@ -1234,6 +1314,7 @@
         var r = await process(f, edits[i], longest, q, mime, effSharp(i));
         if (mine !== token) break;
         var out = new File([r.blob], outName(i, mime), { type: mime });
+        out._p3 = r.p3;
         results[i] = out;
         tOld += f.size; tNew += r.blob.size;
         addStub(out, f, r, i);
@@ -1378,6 +1459,7 @@
 
       var name = results[idx] ? results[idx].name : outName(idx, mime);
       var out = new File([r.blob], name, { type: mime });
+      out._p3 = r.p3;
       results[idx] = out;
 
       var newUrl = URL.createObjectURL(out);
@@ -1647,7 +1729,7 @@
 
     var iw = (cRot % 180 === 0) ? pw : ph;
     var ih = (cRot % 180 === 0) ? ph : pw;
-    var x = cropCanvas.getContext("2d");
+    var x = cropCanvas.getContext("2d", cmOK ? { colorSpace: "display-p3" } : undefined);
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.imageSmoothingEnabled = true;
     if (x.imageSmoothingQuality) x.imageSmoothingQuality = "high";
@@ -1844,13 +1926,18 @@
     return a;
   }
 
-  function pdfOutBuild(pages){
+  function pdfOutBuild(pages, icc){
     var parts = [], len = 0, off = [], i;
     function put(v){
       var a = (typeof v === "string") ? pdfOutStr(v) : v;
       parts.push(a); len += a.length;
     }
-    var n = pages.length, last = 2 + n * 3, kids = "";
+    var n = pages.length, wide = false;
+    for (i = 0; i < n; i++) if (pages[i].p3) wide = true;
+    /* a page written in P3 has to say so, or a reader takes it for sRGB and
+       flattens exactly the colours the pipeline just kept */
+    var iccN = (wide && icc) ? 3 + n * 3 : 0;
+    var last = 2 + n * 3 + (iccN ? 1 : 0), kids = "";
     for (i = 0; i < n; i++) kids += (5 + i * 3) + " 0 R ";
 
     put("%PDF-1.4\n%\u00E2\u00E3\u00CF\u00D3\n");
@@ -1862,9 +1949,10 @@
     for (i = 0; i < n; i++){
       var pg = pages[i], oI = 3 + i * 3, oC = 4 + i * 3, oP = 5 + i * 3;
       var w = (pg.w * 72 / 150).toFixed(2), h = (pg.h * 72 / 150).toFixed(2);
+      var csp = (iccN && pg.p3) ? "[/ICCBased " + iccN + " 0 R]" : "/DeviceRGB";
       off[oI] = len;
       put(oI + " 0 obj\n<< /Type /XObject /Subtype /Image /Width " + pg.w +
-          " /Height " + pg.h + " /ColorSpace /DeviceRGB /BitsPerComponent 8" +
+          " /Height " + pg.h + " /ColorSpace " + csp + " /BitsPerComponent 8" +
           " /Filter /" + (pg.flate ? "FlateDecode" : "DCTDecode") +
           " /Length " + pg.bytes.length + " >>\nstream\n");
       put(pg.bytes);
@@ -1877,6 +1965,13 @@
           "] /Resources << /XObject << /Im0 " + oI + " 0 R >> >> /Contents " + oC + " 0 R >>\nendobj\n");
     }
 
+    if (iccN){
+      off[iccN] = len;
+      put(iccN + " 0 obj\n<< /N 3 /Alternate /DeviceRGB /Length " + icc.length + " >>\nstream\n");
+      put(icc);
+      put("\nendstream\nendobj\n");
+    }
+
     var start = len, x = "xref\n0 " + (last + 1) + "\n0000000000 65535 f \n";
     for (i = 1; i <= last; i++) x += ("0000000000" + off[i]).slice(-10) + " 00000 n \n";
     x += "trailer\n<< /Size " + (last + 1) + " /Root 1 0 R >>\nstartxref\n" + start + "\n%%EOF\n";
@@ -1884,9 +1979,9 @@
     return new Blob(parts, { type: "application/pdf" });
   }
 
-  async function pdfOutFlate(bmp, d){
+  async function pdfOutFlate(bmp, d, p3){
     if (typeof CompressionStream !== "function") return null;
-    var c = canvasOf(d.w, d.h), x = c.getContext("2d");
+    var c = canvasOf(d.w, d.h, p3 ? "display-p3" : null), x = c.getContext("2d");
     x.drawImage(bmp, 0, 0);
     var px = x.getImageData(0, 0, d.w, d.h).data;
     kill(c);
@@ -1904,18 +1999,18 @@
       var f = files[i], bmp = null, c = null;
       try {
         bmp = await decode(f);
-        var d = dimsOf(bmp);
+        var d = dimsOf(bmp), p3 = !!f._p3;
         if (f.type === "image/jpeg"){
-          pages.push({ bytes: new Uint8Array(await f.arrayBuffer()), w: d.w, h: d.h, flate: false });
+          pages.push({ bytes: new Uint8Array(await f.arrayBuffer()), w: d.w, h: d.h, flate: false, p3: p3 });
         } else {
-          var z = await pdfOutFlate(bmp, d);
+          var z = await pdfOutFlate(bmp, d, p3);
           if (z){
-            pages.push({ bytes: z, w: d.w, h: d.h, flate: true });
+            pages.push({ bytes: z, w: d.w, h: d.h, flate: true, p3: p3 });
           } else {
-            c = canvasOf(d.w, d.h);
+            c = canvasOf(d.w, d.h, p3 ? "display-p3" : null);
             c.getContext("2d").drawImage(bmp, 0, 0);
             var b = await toBlob(c, "image/jpeg", 0.92);
-            pages.push({ bytes: new Uint8Array(await b.arrayBuffer()), w: d.w, h: d.h, flate: false });
+            pages.push({ bytes: new Uint8Array(await b.arrayBuffer()), w: d.w, h: d.h, flate: false, p3: p3 });
           }
         }
       } finally { release(bmp); kill(c); }
@@ -1935,7 +2030,7 @@
       var pb = (srcBase[first] || "FEATHER").replace(/_SHEET\d+$/, "");
       var pk = "pdf:" + pb;
       var pn = pb + "_FW_" + fwStamp() + "_" + fwPad(fwTake(pk)) + ".pdf";
-      var one = new File([pdfOutBuild(await pdfOutPages(files))], pn,
+      var one = new File([pdfOutBuild(await pdfOutPages(files), cmICC)], pn,
                          { type: "application/pdf" });
       setStatus("");
       if (navigator.canShare && navigator.canShare({ files: [one] })){
@@ -1958,8 +2053,10 @@
       var k = fwKey(i), n = fwTake(k);
       keys.push(k);
       var nm = (outBase[i] || "photo") + "_" + fwPad(n) + "." + extOf(results[i].type);
-      results[i] = new File([results[i]], nm, { type: results[i].type });
-      return results[i];
+      var re = new File([results[i]], nm, { type: results[i].type });
+      re._p3 = results[i]._p3;
+      results[i] = re;
+      return re;
     });
     var undo = function(){ keys.forEach(fwGive); repaintNames(); };
 
@@ -2082,6 +2179,7 @@
   }
   // ===== PDF IN — end =====
 
+  cmProbe();
   applyLang();
 })();
 </script>
