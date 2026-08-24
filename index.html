@@ -325,7 +325,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.14</span>
+      <span class="ver">v1.14.1</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -1034,9 +1034,31 @@
       else c.toBlob(function(b){ res(b); }, mime, q);
     });
   }
+  /* ---- what the saved file carries -------------------------------------
+     Nothing but pixels. Decoding hands over an image, the pipeline draws it
+     onto a canvas, and toBlob writes a file out of that canvas — so GPS,
+     camera and lens, the date and time of the shot, and any copyright field
+     the source carried are gone from every result, with no code of ours
+     needed to strip them. Every photo takes that road, Source format
+     included; nothing is ever passed through untouched.
+
+     Orientation is the one thing that survives, and it survives as pixels
+     rather than as a tag: the browser reads it and turns the shot upright
+     before we see it, then the tag itself dies with the rest. Both calls
+     below ask for that by name instead of trusting the default, because the
+     default is what changed under us in older browsers — and a photo whose
+     tag were dropped without being applied would save on its side, with
+     nothing left to put it right. */
   function decode(src){
     if (typeof createImageBitmap === "function"){
-      return createImageBitmap(src).catch(function(){ return viaImage(src); });
+      try {
+        return createImageBitmap(src, { imageOrientation: "from-image" })
+          .catch(function(){ return createImageBitmap(src); })
+          .catch(function(){ return viaImage(src); });
+      } catch (e){}
+      try {
+        return createImageBitmap(src).catch(function(){ return viaImage(src); });
+      } catch (e){}
     }
     return viaImage(src);
   }
@@ -1044,6 +1066,7 @@
     var url = URL.createObjectURL(src);
     return new Promise(function(res, rej){
       var img = new Image();
+      img.style.imageOrientation = "from-image";
       img.onload = function(){ img._url = url; res(img); };
       img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error("decode")); };
       img.src = url;

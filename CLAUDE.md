@@ -59,6 +59,10 @@ Before any of it, `acceptFiles()` receives whatever the picker handed over; PDF 
 
 `decode()` (`createImageBitmap`, falling back to `<img>`) → `cropAndOrient()` (applies crop + rotation + flip with exact coordinate-space transforms) → `stepDown()` (progressive halving rather than a single downscale, to avoid aliasing) → `sharpen()` (a simple unsharp mask via hand-rolled convolution over `ImageData`, skipped entirely at 0) → `toBlob()` for final encoding.
 
+**Metadata.** Nothing but pixels leaves the app. Decoding hands over an image, the pipeline draws it onto a canvas, and `toBlob()` writes the file out of that canvas — so GPS coordinates, camera and lens, capture date and time, and any copyright field the source carried are absent from every result, without a line of stripping code. Every photo takes that road, `Source` format included; no file is ever passed through untouched. The only exception is the ICC profile, which is not EXIF and is written by the browser under the colour-space section below.
+
+EXIF `Orientation` is the one thing that survives, and it survives as pixels rather than as a tag: the browser applies it before `decode()` returns, and the tag dies with the rest of the metadata. `decode()` and `viaImage()` therefore ask for `imageOrientation: "from-image"` by name instead of trusting the default — the default is what shifted under us in older browsers, and a photo whose tag were dropped without first being applied would save on its side with nothing left to correct it. `decode()` falls back to a plain `createImageBitmap` where the option is refused, and then to `viaImage()`.
+
 **Colour space.** Every canvas in the pipeline is born in `canvasOf()`, and it takes its space from the source rather than assuming sRGB. `cmSpace()` sniffs the picked file's ICC profile, and if its red primary sits beyond sRGB's — Display P3, which is what an iPhone camera writes, or anything wider — the whole chain runs in `display-p3` and the saved file is tagged to match. A HEIC states its space in a box the sniffer cannot read, so the format itself is taken as the answer and it runs wide by default — without that a HEIC would be clipped to sRGB, which is the exact fade v1.12.3 removed. An embedded profile, where there is one, still overrules the assumption. Otherwise nothing changes: screenshots, downloads and rendered PDF pages keep the old sRGB path exactly. Without this, drawing a P3 photo onto an sRGB canvas clipped every colour the narrower space could not hold, and a pure red was saved as `233,51,35` instead of `255,0,0` — which reads on the phone as if the compression ate the colour.
 
 Widening is gated on `cmProbe()`, a one-off runtime check that the browser really hands back a P3 context **and** really tags what it encodes. If either is missing, nothing widens and the app behaves exactly as it did before. `pdfOutBuild()` states the space as well: a page that came out wide is written with an `/ICCBased` colour space instead of `/DeviceRGB`, because a reader would otherwise take it for sRGB and flatten precisely what the pipeline just preserved.
@@ -106,7 +110,7 @@ v2.7  →  cosmetic tweak       →  v2.7.1
 
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
-The current version in `index.html` is **`v1.14`**.
+The current version in `index.html` is **`v1.14.1`**.
 
 ## Git workflow and release history
 
