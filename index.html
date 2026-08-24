@@ -375,7 +375,7 @@
     <div class="ticks light"><i></i><i></i><i></i></div>
   </div>
 
-  <input type="file" id="picker" accept="image/*" multiple>
+  <input type="file" id="picker" accept="image/*,.heic,.heif" multiple>
   <div class="actions">
     <button class="btn" id="pick" data-t="bChoose">Choose Photos</button>
     <button class="btn ghost" id="share" disabled>Save</button>
@@ -528,7 +528,7 @@
       errRead:"Could not read those files. Try picking from your photo library.",
       errOpen:"Could not open that image.",
       errShare:"Sharing is unavailable here.",
-      errOne:"Could Not Compress",
+      errOne:"Could Not Compress", errHeic:"HEIC \u2014 Not Readable Here",
       aEdit:"Edit", aRemove:"Remove",
       tOrig:"Original", tComp:"Compressed",
       vSharp:"Sharpness \u2014 This Photo", bClose:"Close",
@@ -558,7 +558,7 @@
       errRead:"تعذرت قراءة هذه الملفات. جرب اختيارها من مكتبة الصور.",
       errOpen:"تعذر فتح هذه الصورة.",
       errShare:"المشاركة غير متاحة هنا.",
-      errOne:"تعذر الضغط",
+      errOne:"تعذر الضغط", errHeic:"صيغة HEIC غير مقروءة هنا",
       aEdit:"تعديل", aRemove:"حذف",
       tOrig:"الأصلية", tComp:"المضغوطة",
       vSharp:"الحدة \u2014 لهذه الصورة", bClose:"إغلاق",
@@ -711,6 +711,14 @@
 
   function effSharp(i){ return sharps[i] === null || sharps[i] === undefined ? sharpAll : sharps[i]; }
   function readyFiles(){ return results.filter(Boolean); }
+
+  /* an iPhone photo arrives as HEIC when it comes from the Files app or a
+     message rather than the camera roll. The browser is what decodes it, and
+     file.type is often empty on the way in, so the name is the fallback tell. */
+  function heicIs(f){
+    var t = (f && f.type || "").toLowerCase();
+    return t === "image/heic" || t === "image/heif" || /\.hei[cf]$/i.test(f && f.name || "");
+  }
 
   function extOf(mime){ return mime === "image/png" ? "png" : "jpg"; }
   function labelOf(type){
@@ -1076,7 +1084,10 @@
   async function cmSpace(file){
     if (!(await cmProbe())) return null;
     if (file._wide === undefined){
-      file._wide = false;
+      /* an iPhone writes HEIC in Display P3 and carries the fact in a box the
+         sniffer below cannot read, so the format itself is taken as the answer
+         — and a profile, where there is one, still overrules it */
+      file._wide = heicIs(file);
       try {
         var icc = iccOf(await file.slice(0, 131072).arrayBuffer());
         if (icc) file._wide = iccRedX(icc) > CM_WIDE;
@@ -1449,7 +1460,7 @@
         tOld += f.size; tNew += r.blob.size;
         addStub(out, f, r, i);
         matteGate();
-      } catch (e){ addFail(f.name, i); }
+      } catch (e){ addFail(f.name, i, heicIs(f) ? "errHeic" : "errOne"); }
     }
 
     busy = false;
@@ -1531,11 +1542,12 @@
     stubs.appendChild(el);
   }
 
-  function addFail(name, idx){
+  function addFail(name, idx, key){
+    var k = key || "errOne";
     var el = document.createElement("div");
     el.className = "stub";
     el.innerHTML = '<div class="meta">' + delIcon() + '<div class="name"></div>' +
-      '<div class="nums" data-t="errOne" style="color:#BF3B2B">' + t("errOne") + '</div></div>';
+      '<div class="nums" data-t="' + k + '" style="color:#BF3B2B">' + t(k) + '</div></div>';
     el.querySelector(".name").textContent = name;
     wireDelete(el, idx);
     stubs.appendChild(el);
