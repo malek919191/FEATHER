@@ -1351,20 +1351,27 @@
     kill(c);
   }
 
-  async function process(file, edit, longest, q, mime, sharp){
+  /* the stretch of road every encode shares: decode, edit, and the untouched
+     copy the compare viewer needs. It is kept apart so the target-size search
+     can walk it once and then re-encode as many times as it takes. */
+  async function prepSrc(file, edit, mime){
     var space = await cmSpace(file);
     var bmp = await decode(file);
     alphaSniff(file, bmp);
     var bg = matteOf(file, mime);
     var d0 = dimsOf(bmp);
     var e = buildEdited(bmp, d0.w, d0.h, edit, space, bg);
-    var ow = e.w, oh = e.h, w = ow, h = oh;
-    var maxSide = Math.max(ow, oh);
-
     /* the left-hand side of the compare viewer: it has to keep transparency
        too, or the photo would be judged against a black flattening of itself */
     var refBlob = null;
     if (edit) refBlob = await toBlob(e.src, bg === null ? "image/png" : "image/jpeg", 0.95);
+    return { space: space, bmp: bmp, bg: bg, e: e, refBlob: refBlob };
+  }
+
+  async function process(file, edit, longest, q, mime, sharp){
+    var p = await prepSrc(file, edit, mime);
+    var e = p.e, ow = e.w, oh = e.h, w = ow, h = oh;
+    var maxSide = Math.max(ow, oh);
 
     if (longest > 0 && maxSide > longest){
       var s = longest / maxSide;
@@ -1372,17 +1379,17 @@
       h = Math.max(1, Math.round(oh * s));
     }
 
-    var canvas = stepDown(e.src, ow, oh, w, h, space, bg);
-    release(bmp);
+    var canvas = stepDown(e.src, ow, oh, w, h, p.space, p.bg);
+    release(p.bmp);
     if (e.temp) kill(e.temp);
 
-    if (sharp > 0) (bg === null ? sharpenAlpha : sharpen)(canvas.getContext("2d"), w, h, sharp);
+    if (sharp > 0) (p.bg === null ? sharpenAlpha : sharpen)(canvas.getContext("2d"), w, h, sharp);
 
     var blob = await toBlob(canvas, mime, q);
     kill(canvas);
     if (!blob) throw new Error("encode");
-    return { blob: blob, refBlob: refBlob, w: w, h: h, ow: ow, oh: oh,
-             p3: !!space, clear: bg === null };
+    return { blob: blob, refBlob: p.refBlob, w: w, h: h, ow: ow, oh: oh,
+             p3: !!p.space, clear: p.bg === null };
   }
 
   async function previewOnly(file, edit){
