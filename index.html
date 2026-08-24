@@ -63,6 +63,9 @@
   .label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
     text-transform:uppercase;margin-bottom:7px}
   .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:18px}
+  /* the format row takes a fourth column only on a device that can really
+     encode WEBP; everywhere else it stays the three it has always been */
+  #formats.wide4{grid-template-columns:repeat(4,1fr)}
   .row5{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
   .row6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}
   .opt{appearance:none;-webkit-appearance:none;background:#FDFCF8;cursor:pointer;
@@ -322,7 +325,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.13</span>
+      <span class="ver">v1.14</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -332,6 +335,7 @@
     <button class="opt" data-f="src" aria-pressed="true" data-t="fSource">Source<small data-t="sOrig">Orig</small></button>
     <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG</button>
     <button class="opt" data-f="image/png" aria-pressed="false">PNG</button>
+    <button class="opt hidden" id="fWebp" data-f="image/webp" aria-pressed="false">WEBP</button>
   </div>
 
   <div id="matteWrap" class="hidden">
@@ -720,7 +724,36 @@
     return t === "image/heic" || t === "image/heif" || /\.hei[cf]$/i.test(f && f.name || "");
   }
 
-  function extOf(mime){ return mime === "image/png" ? "png" : "jpg"; }
+  /* WEBP is not offered on a promise. A browser that cannot encode it does
+     not refuse — toBlob quietly hands back a PNG under the WEBP name, which
+     would come out heavier than the photo went in and read as a bug. So one
+     1x1 encode settles it on this device before the button is ever shown. */
+  var webpOK = false;
+  async function webpProbe(){
+    var c = null;
+    try {
+      c = document.createElement("canvas");
+      c.width = 1; c.height = 1;
+      c.getContext("2d");
+      var b = await toBlob(c, "image/webp", 0.8);
+      webpOK = !!b && b.type === "image/webp";
+    } catch (e){ webpOK = false; }
+    kill(c);
+    var btn = $("fWebp");
+    if (!btn) return;
+    if (webpOK){ btn.classList.remove("hidden"); $("formats").classList.add("wide4"); }
+    else btn.parentNode.removeChild(btn);
+    refreshGate();
+  }
+
+  /* the formats that can carry transparency out of the app */
+  function alphaFmt(mime){ return mime === "image/png" || mime === "image/webp"; }
+
+  function extOf(mime){
+    if (mime === "image/png") return "png";
+    if (mime === "image/webp") return "webp";
+    return "jpg";
+  }
   function labelOf(type){
     if (type === "image/png") return "PNG";
     if (type === "image/webp") return "WEBP";
@@ -729,17 +762,19 @@
     return "JPEG";
   }
   function outMime(file){
-    if (format === "src") return file.type === "image/png" ? "image/png" : "image/jpeg";
-    return format;
+    if (format !== "src") return format;
+    if (file.type === "image/png") return "image/png";
+    if (file.type === "image/webp" && webpOK) return "image/webp";
+    return "image/jpeg";
   }
-  /* can anything on screen actually come out transparent? Only a PNG can hold
-     it, so the answer follows the chosen format — and under Source it follows
-     the picked files. */
+  /* can anything on screen actually come out transparent? Only PNG and WEBP
+     can hold it, so the answer follows the chosen format — and under Source it
+     follows what each picked file is about to become. */
   function matteKeep(){
-    if (format === "image/png") return true;
+    if (alphaFmt(format)) return true;
     if (format !== "src") return false;
     for (var i = 0; i < sourceFiles.length; i++){
-      if (sourceFiles[i] && sourceFiles[i].type === "image/png") return true;
+      if (sourceFiles[i] && alphaFmt(outMime(sourceFiles[i]))) return true;
     }
     return false;
   }
@@ -751,7 +786,7 @@
     var m = (matte === "none" && !matteKeep()) ? "white" : matte;
     if (m === "white") return "#FFFFFF";
     if (m === "black") return "#000000";
-    return (mime === "image/png" && file._alpha) ? null : "#FFFFFF";
+    return (alphaFmt(mime) && file._alpha) ? null : "#FFFFFF";
   }
   /* the row only appears once a photo carrying real transparency has been seen,
      so an ordinary camera roll never grows a control it has no use for */
@@ -808,6 +843,7 @@
     if (!mixed){
       if (t === "image/png") want = "image/png";
       else if (t === "image/jpeg") want = "image/jpeg";
+      else if (t === "image/webp" && webpOK) want = "image/webp";
     }
     format = want;
     Array.prototype.forEach.call($("formats").querySelectorAll(".opt"), function(o){
@@ -2149,7 +2185,11 @@
         if (f.type === "image/jpeg"){
           pages.push({ bytes: new Uint8Array(await f.arrayBuffer()), w: d.w, h: d.h, flate: false, p3: p3 });
         } else {
-          var z = await pdfOutFlate(bmp, d, p3);
+          /* a WEBP page cannot go into a PDF as it is — the format does not
+             exist there — and the lossless route would make the document some
+             six times heavier than the very files WEBP was chosen to keep
+             small, so it takes the JPEG path below instead */
+          var z = f.type === "image/webp" ? null : await pdfOutFlate(bmp, d, p3);
           if (z){
             pages.push({ bytes: z, w: d.w, h: d.h, flate: true, p3: p3 });
           } else {
@@ -2326,6 +2366,7 @@
   // ===== PDF IN — end =====
 
   cmProbe();
+  webpProbe();
   applyLang();
 })();
 </script>
