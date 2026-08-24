@@ -77,7 +77,7 @@
     color:var(--ink-soft);margin-top:2px}
   .opt[aria-pressed="true"]{background:#16212B;border-color:#16212B;color:#FFFFFF}
   .opt[aria-pressed="true"] small{color:#9FB4C2}
-  .row5.muted{opacity:.4}
+  .row5.muted,.row6.muted{opacity:.4}
   .opt:disabled{opacity:.35;cursor:default}
   /* a photo that keeps its transparency is shown over the usual chequerboard,
      so an empty background reads as empty rather than as a white one */
@@ -87,6 +87,7 @@
     background-size:18px 18px;background-position:0 0,9px 9px}
   .custom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:18px}
   .custom.hidden{display:none}
+  .custom.one{grid-template-columns:minmax(0,1fr)}
   .fieldwrap{display:flex;align-items:center;gap:7px;background:#FDFCF8;min-width:0;
     border:1px solid var(--rule);border-radius:var(--r);padding:9px 11px}
   .fieldwrap span{font-family:var(--mono);font-size:10px;color:var(--ink-soft);letter-spacing:.08em}
@@ -148,6 +149,7 @@
   .stub .nums .arrow{color:var(--ink-soft);padding:0 6px}
   .stub .nums .new{font-weight:650}
   .stub .dim{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-top:3px;padding-right:70px}
+  .stub .fitNote{font-family:var(--mono);font-size:10.5px;color:var(--stamp);margin-top:2px}
   .stub .shot{display:block;width:100%;background:#EFEEE8;cursor:pointer;position:relative;
     overflow:hidden;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   /* the finger must land on the frame, never on the photo itself: an image under the
@@ -325,7 +327,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.14.1</span>
+      <span class="ver">v1.15</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -347,7 +349,7 @@
     </div>
   </div>
 
-  <div class="label" data-t="lLongest">Longest Side</div>
+  <div class="label" id="sLabel">Longest Side</div>
   <div class="row6" id="scales">
     <button class="opt" data-w="0" aria-pressed="true">1:1<small data-t="sOrig">Orig</small></button>
     <button class="opt" data-w="900" aria-pressed="false">900<small data-t="sPx">Px</small></button>
@@ -372,6 +374,11 @@
   </div>
 
   <div class="spacer"></div>
+
+  <div class="label" data-t="lFit">Target Size</div>
+  <div class="custom one" id="fitRow">
+    <label class="fieldwrap"><span data-t="fKB">KB</span><input id="fkb" type="number" inputmode="numeric" placeholder="e.g. 300" data-tp="pFit"></label>
+  </div>
 
   <div class="label" data-t="lSharp">Sharpness</div>
   <div class="sharpRow">
@@ -495,6 +502,12 @@
      so it is always given a colour whatever this says. */
   var matte = "none";
   var customMode = false, customW = null, customH = null, baseRatio = null;
+  /* Target size: the user types the size he needs and the app walks these two
+     ladders to reach it — the quality first, never under the floor, and only
+     then the longest side, a rung at a time. fitKB of 0 is off, and the two
+     rows stay the user's own. */
+  var FIT_FLOOR = 0.60, FIT_QS = [0.90, 0.75, 0.60, 0.45, 0.30], FIT_WS = [900, 700, 500, 350];
+  var fitKB = 0, fitPicks = [], fitTimer = null;
   var sourceFiles = [], edits = [], results = [], urls = [], token = 0, busy = false;
   /* sharpAll drives every photo; sharps[i] is null until that photo is set
      on its own in the viewer, after which it stops following sharpAll */
@@ -509,7 +522,8 @@
       handle = $("handle"), imgOld = $("imgOld"), imgNew = $("imgNew"),
       levelsRow = $("levels"), qLabel = $("qLabel"),
       matteWrap = $("matteWrap"), matteRow = $("mattes"),
-      customRow = $("customRow"), cwEl = $("cw"), chEl = $("ch");
+      customRow = $("customRow"), cwEl = $("cw"), chEl = $("ch"),
+      scalesRow = $("scales"), sLabel = $("sLabel"), fkbEl = $("fkb");
 
   /* Every word the user can see, in both languages. Switching writes these into
      the [data-t] marks already in the page and nothing else: no photo is decoded,
@@ -523,6 +537,9 @@
       fW:"W", fH:"H", pW:"Width", pH:"Height",
       lQuality:"Quality", qOff:"Quality \u2014 Not Used Here",
       qHighest:"Highest", qHigh:"High", qMed:"Med", qLow:"Low", qLeast:"Least",
+      lFit:"Target Size", fKB:"KB", pFit:"e.g. 300",
+      fitAuto:"Longest Side \u2014 Chosen", fitAutoQ:"Quality \u2014 Chosen",
+      fitting:"Fitting {1} of {2}\u2026", fitShort:"Smallest it can go",
       lSharp:"Sharpness", bChoose:"Choose Photos", bSave:"Save",
       lSeq:"Copy No.", aSeqDown:"Lower the copy number", aSeqUp:"Raise the copy number",
       pdfOutSave:"Save PDF", pdfOutBusy:"Building the PDF\u2026",
@@ -553,6 +570,9 @@
       fW:"عرض", fH:"ارتفاع", pW:"العرض", pH:"الارتفاع",
       lQuality:"الجودة", qOff:"الجودة \u2014 لا تستخدم هنا",
       qHighest:"الأعلى", qHigh:"عالية", qMed:"متوسطة", qLow:"منخفضة", qLeast:"الأدنى",
+      lFit:"الحجم المطلوب", fKB:"كيلوبايت", pFit:"مثلاً 300",
+      fitAuto:"الضلع الأطول \u2014 المختار", fitAutoQ:"الجودة \u2014 المختارة",
+      fitting:"جاري ضبط حجم {1} من {2}\u2026", fitShort:"أصغر ما يمكن",
       lSharp:"الحدة", bChoose:"اختر الصور", bSave:"حفظ",
       lSeq:"رقم النسخة", aSeqDown:"إنقاص رقم النسخة", aSeqUp:"زيادة رقم النسخة",
       pdfOutSave:"حفظ PDF", pdfOutBusy:"جاري إنشاء ملف PDF\u2026",
@@ -651,8 +671,9 @@
   }
   bind("formats", function(b){ format = b.dataset.f; });
   bind("mattes",  function(b){ matte = b.dataset.m; });
-  bind("levels",  function(b){ quality = parseFloat(b.dataset.q); });
+  bind("levels",  function(b){ quality = parseFloat(b.dataset.q); fitOff(); });
   bind("scales",  function(b){
+    fitOff();
     if (b.dataset.w === "custom"){
       customMode = true;
       customRow.classList.remove("hidden");
@@ -694,6 +715,18 @@
     clearTimeout(customTimer);
     customTimer = setTimeout(function(){ refreshGate(); rerender(); }, 500);
   }
+
+  /* The field is the switch itself: a number in it turns target size on, an
+     empty field hands the two rows straight back to the user. No second row of
+     buttons is added anywhere — the app presses his own. */
+  fkbEl.addEventListener("input", function(){
+    var v = parseInt(fkbEl.value, 10), was = fitKB;
+    fitKB = (!v || v < 1) ? 0 : v;
+    if (was > 0 && !fitKB) fitRestore();
+    refreshGate();
+    clearTimeout(fitTimer);
+    fitTimer = setTimeout(rerender, 500);
+  });
 
   var sharpTimer = null;
   $("sharp").addEventListener("input", function(){
@@ -819,18 +852,85 @@
   }
   function ready(){
     var t = longestTarget();
+    /* under a target size the app settles both of them itself, so there is
+       nothing left for the user to fill in */
+    if (fitKB > 0) return true;
     return t !== null && (quality !== null || lossless());
   }
 
   function refreshGate(){
-    var ll = lossless();
-    levelsRow.classList.toggle("muted", ll);
-    qLabel.textContent = ll ? t("qOff") : t("lQuality");
+    var ll = lossless(), fit = fitKB > 0;
+    /* both rows are dimmed while a target size is in force: they are showing
+       what was chosen, not waiting to be chosen */
+    levelsRow.classList.toggle("muted", ll || fit);
+    scalesRow.classList.toggle("muted", fit);
+    sLabel.textContent = fit ? t("fitAuto") : t("lLongest");
+    qLabel.textContent = ll ? t("qOff") : (fit ? t("fitAutoQ") : t("lQuality"));
     shBtn.disabled = !(ready() && readyFiles().length);
     pdfOutBtn.disabled = shBtn.disabled || pdfOutBusy;
     subEl.style.display = (sourceFiles.length && !ready()) ? "block" : "none";
     matteGate();
     fwPaintSeq();
+  }
+
+  function fitBytes(){ return fitKB > 0 ? fitKB * 1000 : 0; }
+  /* the size the user already has chosen is the ceiling the search starts at,
+     and an empty Custom pair simply means the photo's own size */
+  function fitStart(){ var v = longestTarget(); return v === null ? 0 : v; }
+
+  /* pressing a size or a quality button is the user taking the wheel back */
+  function fitOff(){
+    if (!fitKB) return;
+    fitKB = 0; fkbEl.value = "";
+  }
+  /* and clearing the field puts the two rows back on what he had chosen
+     himself, so a pick that is no longer in force is never left showing */
+  function fitRestore(){
+    var w = customMode ? "custom" : String(targetW);
+    each("#scales .opt", function(o){
+      o.setAttribute("aria-pressed", o.dataset.w === w ? "true" : "false");
+    });
+    each("#levels .opt", function(o){
+      o.setAttribute("aria-pressed",
+        Math.abs(parseFloat(o.dataset.q) - quality) < 0.001 ? "true" : "false");
+    });
+  }
+  /* 1:1 is the gentlest rung of all, so it wins a tie despite being the
+     smallest number in the list */
+  function fitRank(v){ return v === 0 ? Infinity : v; }
+  function fitTop(map){
+    var k, top = null, n = -1, v;
+    for (k in map){
+      if (!map.hasOwnProperty(k)) continue;
+      v = parseFloat(k);
+      if (map[k] > n || (map[k] === n && fitRank(v) > fitRank(top))){ n = map[k]; top = v; }
+    }
+    return top;
+  }
+  /* The choice is shown by pressing the very buttons the user would have
+     pressed himself. Photos that landed elsewhere keep their own figures on
+     their own cards; the rows show where most of them ended up. */
+  function fitPaint(){
+    if (!fitKB) return;
+    var ws = {}, qs = {}, i, p;
+    for (i = 0; i < fitPicks.length; i++){
+      p = fitPicks[i];
+      if (!p || !results[i]) continue;
+      ws[p.rung] = (ws[p.rung] || 0) + 1;
+      if (p.q) qs[p.q] = (qs[p.q] || 0) + 1;
+    }
+    var bw = fitTop(ws), bq = fitTop(qs);
+    if (bw === null) return;
+    each("#scales .opt", function(o){
+      var d = o.dataset.w, on;
+      if (d === "custom") on = bw !== 0 && FIT_WS.indexOf(bw) < 0;
+      else on = parseInt(d, 10) === bw;
+      o.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    each("#levels .opt", function(o){
+      o.setAttribute("aria-pressed",
+        bq !== null && Math.abs(parseFloat(o.dataset.q) - bq) < 0.001 ? "true" : "false");
+    });
   }
 
   function setFormatFromFiles(){
@@ -1392,6 +1492,118 @@
              p3: !!p.space, clear: p.bg === null };
   }
 
+  /* ---- target size ------------------------------------------------------
+     What a rung really comes to for this photo: one wider than the photo
+     changes nothing, so two of them would encode the very same pixels twice. */
+  function fitSide(rung, ow, oh){
+    var m = Math.max(ow, oh);
+    return (rung > 0 && m > rung) ? rung : m;
+  }
+  /* the rungs to walk down, starting at the size the user has already chosen
+     and never climbing above it */
+  function fitPlan(start, ow, oh){
+    var raw = [start], out = [], seen = -1, i, side;
+    for (i = 0; i < FIT_WS.length; i++){
+      if (start === 0 || FIT_WS[i] < start) raw.push(FIT_WS[i]);
+    }
+    for (i = 0; i < raw.length; i++){
+      side = fitSide(raw[i], ow, oh);
+      if (side === seen) continue;
+      seen = side;
+      out.push({ rung: raw[i], side: side });
+    }
+    return out;
+  }
+  /* the quality steps at or under the one the user chose, split at the floor:
+     main is walked on every rung, last is held back for a target that nothing
+     on the smallest rung can reach */
+  function fitQs(ceil, flat){
+    var main = [], last = [], i, q;
+    if (flat) return { main: [ceil], last: [] };
+    for (i = 0; i < FIT_QS.length; i++){
+      q = FIT_QS[i];
+      if (q > ceil + 0.001) continue;
+      (q >= FIT_FLOOR - 0.001 ? main : last).push(q);
+    }
+    if (!main.length && last.length) main = [last.shift()];
+    if (!main.length) main = [ceil];
+    return { main: main, last: last };
+  }
+
+  /* One photo, encoded again and again until it sits under the size asked for.
+     It is decoded and edited once — only the resize and the encode repeat —
+     and a rung that cannot hold it even at the floor quality is dropped after
+     a single encode, so the search costs far less than it reads. */
+  async function fitProcess(file, edit, start, ceil, mime, sharp, want){
+    var p = await prepSrc(file, edit, mime);
+    var e = p.e, ow = e.w, oh = e.h, flat = mime === "image/png";
+    var qs = fitQs(ceil, flat);                 /* PNG has no quality knob at all */
+    var plan = fitPlan(start || 0, ow, oh);
+    var floorQ = qs.main[qs.main.length - 1];
+    var hit = null, low = null, canvas = null, lim, i, j, k, w, h, b;
+
+    function keep(blob, q, rung, tw, th){
+      if (blob && (!low || blob.size < low.blob.size))
+        low = { blob: blob, q: q, rung: rung, w: tw, h: th };
+      return blob;
+    }
+
+    try {
+      for (i = 0; i < plan.length && !hit; i++){
+        k = plan[i].side / Math.max(ow, oh);
+        w = k < 1 ? Math.max(1, Math.round(ow * k)) : ow;
+        h = k < 1 ? Math.max(1, Math.round(oh * k)) : oh;
+        canvas = stepDown(e.src, ow, oh, w, h, p.space, p.bg);
+        if (sharp > 0) (p.bg === null ? sharpenAlpha : sharpen)(canvas.getContext("2d"), w, h, sharp);
+
+        /* the floor first: if the lightest quality allowed is still too big,
+           no quality on this rung can help and the rung is dropped */
+        b = keep(await toBlob(canvas, mime, floorQ), floorQ, plan[i].rung, w, h);
+        if (!b) throw new Error("encode");
+
+        if (b.size <= want){
+          hit = { blob: b, q: floorQ, rung: plan[i].rung, w: w, h: h };
+          /* and now back up the quality, keeping the best step that still fits */
+          for (j = qs.main.length - 2; j >= 0; j--){
+            b = await toBlob(canvas, mime, qs.main[j]);
+            if (!b || b.size > want) break;
+            hit = { blob: b, q: qs.main[j], rung: plan[i].rung, w: w, h: h };
+          }
+        } else if (i === plan.length - 1){
+          /* the smallest rung, and it still will not fit: the reserve steps
+             below the floor, which are reached nowhere else */
+          for (j = 0; j < qs.last.length; j++){
+            b = keep(await toBlob(canvas, mime, qs.last[j]), qs.last[j], plan[i].rung, w, h);
+            if (!b) break;
+            if (b.size <= want){
+              hit = { blob: b, q: qs.last[j], rung: plan[i].rung, w: w, h: h };
+              break;
+            }
+          }
+        } else {
+          /* skip the rungs that cannot hold it either: bytes follow the pixel
+             count, so the square root of how far over we are says roughly how
+             much narrower the photo has to become. The margin keeps a rung
+             that might just make it, and the last rung is never skipped. */
+          lim = plan[i].side * Math.sqrt(want / b.size) * 1.15;
+          while (i + 2 < plan.length && plan[i+1].side > lim) i++;
+        }
+        kill(canvas); canvas = null;
+      }
+    } finally {
+      if (canvas) kill(canvas);
+      release(p.bmp);
+      if (e.temp) kill(e.temp);
+    }
+
+    /* nothing reached the target: hand back the smallest there was, and say so */
+    var r = hit || low;
+    if (!r) throw new Error("encode");
+    return { blob: r.blob, refBlob: p.refBlob, w: r.w, h: r.h, ow: ow, oh: oh,
+             p3: !!p.space, clear: p.bg === null,
+             q: flat ? null : r.q, rung: r.rung, short: !hit };
+  }
+
   async function previewOnly(file, edit){
     var space = await cmSpace(file);
     var bmp = await decode(file);
@@ -1509,17 +1721,21 @@
 
     var tOld = 0, tNew = 0, i;
     var longest = longestTarget();
+    var want = fitBytes();
+    fitPicks = [];
 
     for (i = 0; i < sourceFiles.length; i++){
       if (mine !== token) break;
       var f = sourceFiles[i];
       if (!f) break;
-      setStatus("compressing", false, [i+1, sourceFiles.length]);
+      setStatus(want ? "fitting" : "compressing", false, [i+1, sourceFiles.length]);
       try {
         var mime = outMime(f);
         var q = quality === null ? 0.75 : quality;
-        var r = await process(f, edits[i], longest, q, mime, effSharp(i));
+        var r = want ? await fitProcess(f, edits[i], fitStart(), q, mime, effSharp(i), want)
+                     : await process(f, edits[i], longest, q, mime, effSharp(i));
         if (mine !== token) break;
+        if (want) fitPicks[i] = { rung: r.rung, q: r.q };
         var out = new File([r.blob], outName(i, mime), { type: mime });
         out._p3 = r.p3;
         results[i] = out;
@@ -1539,6 +1755,7 @@
     $("tOld").textContent = fmt(tOld);
     $("tNew").textContent = fmt(tNew);
     totalBox.classList.remove("hidden");
+    fitPaint();
     refreshGate();
     saveN = done.length; paintSave();
   }
@@ -1562,7 +1779,19 @@
     old.className = "old" + (grew ? "" : " cut");
     old.textContent = fmt(original.size);
     el.querySelector(".new").textContent = fmt(file.size);
-    el.querySelector(".dim").textContent = r.ow + "\u00D7" + r.oh + "  \u2192  " + r.w + "\u00D7" + r.h;
+    var dim = r.ow + "\u00D7" + r.oh + "  \u2192  " + r.w + "\u00D7" + r.h;
+    /* under a target size the quality was the app's decision, so the card
+       carries it: the row above can only show where most photos landed */
+    if (r.q) dim += "   \u00B7   Q" + Math.round(r.q * 100);
+    el.querySelector(".dim").textContent = dim;
+    /* a target nothing could reach says so here, rather than quietly handing
+       back a file bigger than the one that was asked for */
+    var note = el.querySelector(".fitNote");
+    if (note){
+      if (r.short){ note.setAttribute("data-t", "fitShort"); note.textContent = t("fitShort"); }
+      else { note.removeAttribute("data-t"); note.textContent = ""; }
+      note.classList.toggle("hidden", !r.short);
+    }
   }
 
   function addStub(file, original, r, idx){
@@ -1581,6 +1810,7 @@
         '<div class="nums"><span class="old"></span>' +
         '<span class="arrow">&rarr;</span><span class="new"></span></div>' +
         '<div class="dim"></div>' +
+        '<div class="fitNote hidden"></div>' +
       '</div>' +
       '<div class="shot">' + editIcon() + '<img alt="">' +
         '<img class="peek pNew" alt=""><img class="peek pOrig" alt="">' +
@@ -1665,8 +1895,13 @@
     try {
       var mime = outMime(f);
       var q = quality === null ? 0.75 : quality;
-      var r = await process(f, edits[idx], longestTarget(), q, mime, effSharp(idx));
+      var want = fitBytes();
+      /* sharpening adds bytes, so under a target size the whole search has to
+         run again — otherwise the figure on screen would break the promise */
+      var r = want ? await fitProcess(f, edits[idx], fitStart(), q, mime, effSharp(idx), want)
+                   : await process(f, edits[idx], longestTarget(), q, mime, effSharp(idx));
       if (mine !== sharpToken || base !== token){ $("viewSharp").classList.remove("busy"); return; }
+      if (want){ fitPicks[idx] = { rung: r.rung, q: r.q }; fitPaint(); }
 
       var name = results[idx] ? results[idx].name : outName(idx, mime);
       var out = new File([r.blob], name, { type: mime });
@@ -1875,6 +2110,7 @@
     edits.splice(idx, 1);
     sharps.splice(idx, 1);
     stubEls.splice(idx, 1);
+    fitPicks.splice(idx, 1);
     if (!sourceFiles.length){ clearAll(); return; }
     if (idx === 0) await readBaseRatio();
     rerender();
