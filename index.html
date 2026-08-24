@@ -42,13 +42,35 @@
     letter-spacing:.08em;text-transform:uppercase}
   .ver{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-soft);
     letter-spacing:.08em;margin-top:3px;opacity:.75}
+  .refresh{appearance:none;-webkit-appearance:none;cursor:pointer;
+    display:inline-block;margin-top:7px;background:#FDFCF8;color:var(--ink-soft);
+    border:1px solid var(--rule);border-radius:9px;padding:3px 8px 4px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;line-height:1.2;
+    text-transform:uppercase;transition:background .15s,border-color .15s,color .15s}
+  .refresh:active,.refresh.tapped{background:#16212B;border-color:#16212B;color:#FFFFFF}
+  .refresh.tapped{transition:none}
+  /* the column takes the width of its widest child, which is the title, so the
+     toggle beneath it ends exactly where the last T does; the negative margin
+     trims the letter-spacing the title trails after that T */
+  .head-left{flex:0 1 auto;min-width:0}
+  .head-left h1{margin-right:-.14em}
+  .lang{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:11px;width:100%}
+  .langBtn{appearance:none;-webkit-appearance:none;background:#FDFCF8;cursor:pointer;
+    border:1px solid var(--rule);border-radius:11px;padding:11px 4px;
+    color:#16212B;font-family:var(--sans);font-size:13px;font-weight:650;line-height:1.15;
+    transition:background .15s,border-color .15s,color .15s}
+  .langBtn[aria-pressed="true"]{background:#16212B;border-color:#16212B;color:#FFFFFF}
   .label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
     text-transform:uppercase;margin-bottom:7px}
   .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:18px}
+  /* the format row takes a fourth column only on a device that can really
+     encode WEBP; everywhere else it stays the three it has always been */
+  #formats.wide4{grid-template-columns:repeat(4,1fr)}
   .row5{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
   .row6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}
   .opt{appearance:none;-webkit-appearance:none;background:#FDFCF8;cursor:pointer;
     border:1px solid var(--rule);border-radius:var(--r);padding:10px 2px 9px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;color:#16212B;font-family:var(--sans);
     font-size:12px;font-weight:650;line-height:1.15;transition:background .15s,border-color .15s,opacity .15s}
   .opt small{display:block;font-family:var(--mono);font-size:9px;font-weight:400;
@@ -56,6 +78,13 @@
   .opt[aria-pressed="true"]{background:#16212B;border-color:#16212B;color:#FFFFFF}
   .opt[aria-pressed="true"] small{color:#9FB4C2}
   .row5.muted{opacity:.4}
+  .opt:disabled{opacity:.35;cursor:default}
+  /* a photo that keeps its transparency is shown over the usual chequerboard,
+     so an empty background reads as empty rather than as a white one */
+  .stub .shot.clear, #stage.clear{background-color:#FDFCF8;
+    background-image:linear-gradient(45deg,#E4E2DA 25%,transparent 25%,transparent 75%,#E4E2DA 75%),
+                     linear-gradient(45deg,#E4E2DA 25%,transparent 25%,transparent 75%,#E4E2DA 75%);
+    background-size:18px 18px;background-position:0 0,9px 9px}
   .custom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:18px}
   .custom.hidden{display:none}
   .fieldwrap{display:flex;align-items:center;gap:7px;background:#FDFCF8;min-width:0;
@@ -76,7 +105,10 @@
   .sharpBar::-moz-range-thumb{width:22px;height:22px;border:none;border-radius:50%;
     background:#16212B;box-shadow:0 1px 2px rgba(22,33,43,.35)}
   .ticks.light i{background:var(--rule)}
-  .actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:22px}
+  .actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:22px}
+  /* a fixed height keeps the three identical in both languages */
+  .actions .btn{display:flex;align-items:center;justify-content:center;
+    min-height:40px;font-size:12px;padding:11px 2px}
   .btn{display:block;width:100%;border:none;border-radius:var(--r);cursor:pointer;
     font-family:var(--sans);font-size:13.5px;font-weight:650;padding:11px 6px;
     background:#16212B;color:#FFFFFF;-webkit-appearance:none}
@@ -84,22 +116,58 @@
   .btn.ghost{background:#FDFCF8;color:#16212B;border:1px solid #16212B}
   .btn[disabled]{opacity:.32;cursor:default}
   .sub{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);text-align:center;margin:9px 0 0}
+  /* the copy number: one knob that moves every loaded photo together, so ten
+     pages of a document are re-numbered with one press instead of ten */
+  .seqRow{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px}
+  .seqRow.off{display:none}
+  .seqLbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    color:var(--ink-soft);text-transform:uppercase}
+  .seqVal{font-family:var(--mono);font-size:14px;font-weight:650;color:var(--ink);
+    min-width:24px;text-align:center}
+  .seqBtn{width:30px;height:30px;padding:0;border-radius:999px;border:1px solid #16212B;
+    background:#FDFCF8;color:#16212B;font-family:var(--sans);font-size:16px;font-weight:650;
+    line-height:1;cursor:pointer;-webkit-appearance:none}
+  .seqBtn:active{opacity:.85}
+  .seqBtn[disabled]{opacity:.32;cursor:default}
   input[type=file]{display:none}
   .status{font-family:var(--mono);font-size:12px;color:var(--ink-soft);text-align:center;margin:12px 0 0;min-height:16px}
+  /* the status line is empty most of the time, and an empty line that still
+     holds its height leaves a band of nothing between the buttons and the
+     first card — so when there is no message it takes no room at all */
+  .status:empty{margin:0;min-height:0}
   .status.err{color:var(--stamp)}
 
   .stubs{margin-top:22px;display:flex;flex-direction:column;gap:20px}
   .stub{background:#FDFCF8;border-radius:var(--r);overflow:hidden;box-shadow:0 1px 0 rgba(22,33,43,.14)}
   .stub .meta{padding:12px 14px 11px;position:relative;border-bottom:1px dashed var(--rule)}
-  .stub .name{font-family:var(--mono);font-size:11px;color:var(--ink-soft);word-break:break-all;margin-bottom:4px;padding-right:34px}
+  .stub .name{font-family:var(--mono);font-size:11px;color:var(--ink-soft);word-break:break-all;margin-bottom:2px;padding-right:34px}
+  .stub .out{font-family:var(--mono);font-size:11px;color:#16212B;word-break:break-all;margin-bottom:4px;padding-right:34px}
   .stub .nums{font-family:var(--mono);font-size:15px;color:#16212B}
   .stub .nums .old{color:var(--ink-soft)}
   .stub .nums .old.cut{text-decoration:line-through}
   .stub .nums .arrow{color:var(--ink-soft);padding:0 6px}
   .stub .nums .new{font-weight:650}
   .stub .dim{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-top:3px;padding-right:70px}
-  .stub .shot{display:block;width:100%;background:#EFEEE8;cursor:pointer;position:relative}
-  .stub .shot img{display:block;width:100%;height:auto}
+  .stub .shot{display:block;width:100%;background:#EFEEE8;cursor:pointer;position:relative;
+    overflow:hidden;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  /* the finger must land on the frame, never on the photo itself: an image under the
+     touch is what makes iOS open its own full-screen preview over the app */
+  .stub .shot img{display:block;width:100%;height:auto;pointer-events:none;
+    -webkit-touch-callout:none;-webkit-user-drag:none;user-select:none}
+  /* both versions sit magnified under the shot; the hold shows one at a time */
+  .stub .shot img.peek{position:absolute;top:0;left:0;right:0;bottom:0;
+    width:100%;height:100%;object-fit:cover;z-index:1;display:none;
+    transform:scale(2);transform-origin:50% 50%}
+  .stub .shot.peeking img.pNew{display:block}
+  .stub .shot.peeking.orig img.pNew{display:none}
+  .stub .shot.peeking.orig img.pOrig{display:block}
+  .stub .shot.peeking .editBtn{opacity:0}
+  /* the same tag the compare viewer puts on its original, so the word reads alike in both places */
+  .peekTag{position:absolute;top:10px;right:12px;z-index:3;display:none;
+    font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    background:rgba(10,16,22,.62);color:#FFFFFF;padding:3px 8px;border-radius:6px;
+    pointer-events:none}
+  .stub .shot.peeking .peekTag{display:block}
   .editBtn{position:absolute;top:10px;right:10px;width:38px;height:38px;
     border:none;border-radius:11px;background:rgba(10,16,22,.58);cursor:pointer;
     display:flex;align-items:center;justify-content:center;-webkit-appearance:none;z-index:2}
@@ -130,10 +198,10 @@
     flex-direction:column;align-items:center;justify-content:center;
     padding:calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px)}
   #stage{position:relative;overflow:hidden;border-radius:var(--r);
-    background:#FFFFFF;max-width:100%;max-height:76vh}
+    background:#FFFFFF;flex:0 0 auto}
   #stage .pane{position:absolute;inset:0;overflow:hidden}
   #stage .pane img{position:absolute;top:0;left:0;width:100%;height:100%;
-    object-fit:fill;-webkit-user-select:none;user-select:none;pointer-events:none}
+    object-fit:cover;-webkit-user-select:none;user-select:none;pointer-events:none}
   #paneNew{clip-path:inset(0 0 0 var(--split))}
   #handle{position:absolute;top:0;bottom:0;left:var(--split);width:22px;
     margin-left:-11px;touch-action:none;cursor:ew-resize;z-index:3}
@@ -223,6 +291,23 @@
   .applyRow button{width:calc(50% - 4px)}
   #cropCancel, #cropReset{background:transparent;border:1px solid #46586A;color:#DCE6EE}
   #cropApply{background:#FFFFFF;border:none;color:#16212B}
+  /* Arabic letters join up, so the monospace face and the wide letter-spacing
+     that suit the English labels pull them apart and have to lift; a whole
+     Arabic sentence also needs its own paragraph direction, or the closing
+     full stop is laid out at the wrong end of the line */
+  body.ar .label, body.ar .form-no, body.ar .refresh, body.ar .fieldwrap span,
+  body.ar .opt small, body.ar .sub, body.ar .status,
+  body.ar .tags, body.ar .peekTag, body.ar #viewSharp .vLabel, body.ar .seqLbl{
+    font-family:var(--sans);letter-spacing:0;text-transform:none}
+  body.ar .label{font-size:12px}
+  body.ar .form-no, body.ar .refresh, body.ar .fieldwrap span{font-size:11px}
+  body.ar .opt small{font-size:9.5px}
+  body.ar .seqLbl{font-size:11px}
+  body.ar .sub{font-size:11.5px}
+  body.ar .status{font-size:12.5px}
+  body.ar .tags, body.ar .peekTag, body.ar #viewSharp .vLabel{font-size:10.5px}
+  body.ar .hint, body.ar .sub, body.ar .status{direction:rtl}
+  body.ar .hint{text-align:right}
   @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 </head>
@@ -231,70 +316,96 @@
 
   <div class="byline">Malek Barbari</div>
   <header>
-    <h1>FEATHERWEIGHT</h1>
+    <div class="head-left">
+      <h1>FEATHERWEIGHT</h1>
+      <div class="lang" id="lang">
+        <button class="langBtn" type="button" data-l="en" aria-pressed="true">English</button>
+        <button class="langBtn" type="button" data-l="ar" aria-pressed="false">عربي</button>
+      </div>
+    </div>
     <span class="meta-right">
-      <span class="form-no">on-device</span>
-      <span class="ver">v1.3</span>
+      <span class="form-no" data-t="onDevice">On-Device</span>
+      <span class="ver">v1.14</span>
+      <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
 
-  <div class="label">Format</div>
+  <div class="label" data-t="lFormat">Format</div>
   <div class="row3" id="formats">
-    <button class="opt" data-f="src" aria-pressed="true">Source<small>orig</small></button>
-    <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG<small>lossy</small></button>
-    <button class="opt" data-f="image/png" aria-pressed="false">PNG<small>lossless</small></button>
+    <button class="opt" data-f="src" aria-pressed="true" data-t="fSource">Source<small data-t="sOrig">Orig</small></button>
+    <button class="opt" data-f="image/jpeg" aria-pressed="false">JPEG</button>
+    <button class="opt" data-f="image/png" aria-pressed="false">PNG</button>
+    <button class="opt hidden" id="fWebp" data-f="image/webp" aria-pressed="false">WEBP</button>
   </div>
 
-  <div class="label">Longest side</div>
+  <div id="matteWrap" class="hidden">
+    <div class="label" data-t="lMatte">Background</div>
+    <div class="row3" id="mattes">
+      <button class="opt" data-m="none" aria-pressed="true" data-t="mClear">Transparent</button>
+      <button class="opt" data-m="white" aria-pressed="false" data-t="mWhite">White</button>
+      <button class="opt" data-m="black" aria-pressed="false" data-t="mBlack">Black</button>
+    </div>
+  </div>
+
+  <div class="label" data-t="lLongest">Longest Side</div>
   <div class="row6" id="scales">
-    <button class="opt" data-w="0" aria-pressed="false">1:1<small>orig</small></button>
-    <button class="opt" data-w="900" aria-pressed="false">900<small>px</small></button>
-    <button class="opt" data-w="700" aria-pressed="false">700<small>px</small></button>
-    <button class="opt" data-w="500" aria-pressed="false">500<small>px</small></button>
-    <button class="opt" data-w="350" aria-pressed="false">350<small>px</small></button>
-    <button class="opt" data-w="custom" aria-pressed="false">Custom<small>px</small></button>
+    <button class="opt" data-w="0" aria-pressed="true">1:1<small data-t="sOrig">Orig</small></button>
+    <button class="opt" data-w="900" aria-pressed="false">900<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="700" aria-pressed="false">700<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="500" aria-pressed="false">500<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="350" aria-pressed="false">350<small data-t="sPx">Px</small></button>
+    <button class="opt" data-w="custom" aria-pressed="false" data-t="fCustom">Custom<small data-t="sPx">Px</small></button>
   </div>
   <div class="custom hidden" id="customRow">
-    <label class="fieldwrap"><span>W</span><input id="cw" type="number" inputmode="numeric" placeholder="width"></label>
-    <label class="fieldwrap"><span>H</span><input id="ch" type="number" inputmode="numeric" placeholder="height"></label>
+    <label class="fieldwrap"><span data-t="fW">W</span><input id="cw" type="number" inputmode="numeric" placeholder="Width" data-tp="pW"></label>
+    <label class="fieldwrap"><span data-t="fH">H</span><input id="ch" type="number" inputmode="numeric" placeholder="Height" data-tp="pH"></label>
   </div>
   <div class="spacer"></div>
 
   <div class="label" id="qLabel">Quality</div>
   <div class="row5" id="levels">
-    <button class="opt" data-q="0.90" aria-pressed="false">Highest<small>90</small></button>
-    <button class="opt" data-q="0.75" aria-pressed="false">High<small>75</small></button>
-    <button class="opt" data-q="0.60" aria-pressed="false">Med<small>60</small></button>
-    <button class="opt" data-q="0.45" aria-pressed="false">Low<small>45</small></button>
-    <button class="opt" data-q="0.30" aria-pressed="false">Least<small>30</small></button>
+    <button class="opt" data-q="0.90" aria-pressed="true" data-t="qHighest">Highest<small>90</small></button>
+    <button class="opt" data-q="0.75" aria-pressed="false" data-t="qHigh">High<small>75</small></button>
+    <button class="opt" data-q="0.60" aria-pressed="false" data-t="qMed">Med<small>60</small></button>
+    <button class="opt" data-q="0.45" aria-pressed="false" data-t="qLow">Low<small>45</small></button>
+    <button class="opt" data-q="0.30" aria-pressed="false" data-t="qLeast">Least<small>30</small></button>
   </div>
 
   <div class="spacer"></div>
 
-  <div class="label">Sharpness</div>
+  <div class="label" data-t="lSharp">Sharpness</div>
   <div class="sharpRow">
-    <input id="sharp" class="sharpBar" type="range" min="0" max="1" step="0.05" value="0" aria-label="Sharpness">
+    <input id="sharp" class="sharpBar" type="range" min="0" max="1" step="0.05" value="0" data-ta="lSharp" aria-label="Sharpness">
     <div class="ticks light"><i></i><i></i><i></i></div>
   </div>
 
-  <input type="file" id="picker" accept="image/*" multiple>
+  <input type="file" id="picker" accept="image/*,.heic,.heif" multiple>
   <div class="actions">
-    <button class="btn" id="pick">Choose photos</button>
+    <button class="btn" id="pick" data-t="bChoose">Choose Photos</button>
     <button class="btn ghost" id="share" disabled>Save</button>
+    <button class="btn ghost" id="pdfOut" data-t="pdfOutSave" disabled>Save PDF</button>
   </div>
-  <p class="sub" id="sub">Pick a size and a quality to compress</p>
+  <div class="seqRow off" id="seqRow">
+    <span class="seqLbl" data-t="lSeq">Copy No.</span>
+    <button class="seqBtn" id="seqDown" type="button" data-ta="aSeqDown" aria-label="Lower the copy number">&minus;</button>
+    <span class="seqVal" id="seqVal">01</span>
+    <button class="seqBtn" id="seqUp" type="button" data-ta="aSeqUp" aria-label="Raise the copy number">+</button>
+  </div>
+  <p class="sub" id="sub" data-t="subHint">Enter a width and a height</p>
 
   <p class="status" id="status"></p>
   <div class="stubs" id="stubs"></div>
 
   <div class="total hidden" id="total">
-    <span>Total</span>
+    <span data-t="bTotal">Total</span>
     <span><span id="tOld"></span> &rarr; <b id="tNew"></b></span>
   </div>
 
-  <p class="hint">
+  <p class="hint" data-t="hint">
     Nothing leaves your phone. Tap the corner icon to crop, rotate, or flip. Tap the image to compare
-    it against the original. Save opens the share sheet: Save Image puts it in Photos, Save to Files
+    it against the original. Press and hold to inspect it up close: it is magnified
+    where your finger is, and flashes the original in the middle so you can see what
+    the compression took. Save opens the share sheet: Save Image puts it in Photos, Save to Files
     keeps the exact file shown here.
   </p>
 
@@ -305,7 +416,7 @@
   <div id="stage">
     <div class="pane" id="paneOld"><img id="imgOld" alt=""></div>
     <div class="pane" id="paneNew"><img id="imgNew" alt=""></div>
-    <div class="tags"><span>Original</span><span>Compressed</span></div>
+    <div class="tags"><span data-t="tOrig">Original</span><span data-t="tComp">Compressed</span></div>
     <div id="handle">
       <div class="bar"></div>
       <div class="tri top"></div>
@@ -318,13 +429,13 @@
     <div class="col"><div id="capNewDim"></div><div id="capNewSize"></div></div>
   </div>
   <div id="viewSharp">
-    <div class="vLabel">Sharpness &mdash; this photo</div>
+    <div class="vLabel" data-t="vSharp">Sharpness &mdash; This Photo</div>
     <div class="tiltWrap">
-      <input id="oneSharp" class="tilt" type="range" min="0" max="1" step="0.05" value="0" aria-label="Sharpness">
+      <input id="oneSharp" class="tilt" type="range" min="0" max="1" step="0.05" value="0" data-ta="lSharp" aria-label="Sharpness">
       <div class="ticks"><i></i><i></i><i></i></div>
     </div>
   </div>
-  <button id="closeBtn">Close</button>
+  <button id="closeBtn" data-t="bClose">Close</button>
 </div>
 
 <div id="cropper" class="hidden">
@@ -343,14 +454,14 @@
     </div>
     <div id="cropSize"></div>
     <div class="tiltWrap">
-      <input id="tilt" class="tilt" type="range" min="-90" max="90" step="1" value="0" aria-label="Tilt">
+      <input id="tilt" class="tilt" type="range" min="-90" max="90" step="1" value="0" data-ta="aTilt" aria-label="Tilt">
       <div class="ticks"><i></i><i></i><i></i></div>
-      <button id="tiltZero" class="tiltZero" aria-label="Level"></button>
+      <button id="tiltZero" class="tiltZero" data-ta="aLevel" aria-label="Level"></button>
     </div>
   </div>
   <div class="cropBar">
     <div class="ratios" id="ratios">
-      <button class="ratio" data-r="0" aria-pressed="true">Free</button>
+      <button class="ratio" data-r="0" aria-pressed="true" data-t="rFree">Free</button>
       <button class="ratio" data-r="1" aria-pressed="false">1:1</button>
       <button class="ratio" data-r="1.3333" aria-pressed="false">4:3</button>
       <button class="ratio" data-r="0.75" aria-pressed="false">3:4</button>
@@ -358,14 +469,14 @@
       <button class="ratio" data-r="0.5625" aria-pressed="false">9:16</button>
     </div>
     <div class="tools">
-      <button class="tool" id="rotBtn">Rotate 90&deg;</button>
-      <button class="tool" id="flipH" aria-pressed="false">Flip H</button>
-      <button class="tool" id="flipV" aria-pressed="false">Flip V</button>
+      <button class="tool" id="rotBtn" data-t="bRotate">Rotate 90&deg;</button>
+      <button class="tool" id="flipH" aria-pressed="false" data-t="bFlipH">Flip H</button>
+      <button class="tool" id="flipV" aria-pressed="false" data-t="bFlipV">Flip V</button>
     </div>
-    <div class="applyRow"><button id="cropApply">Apply</button></div>
+    <div class="applyRow"><button id="cropApply" data-t="bApply">Apply</button></div>
     <div class="cropDone">
-      <button id="cropCancel">Cancel</button>
-      <button id="cropReset">Reset</button>
+      <button id="cropCancel" data-t="bCancel">Cancel</button>
+      <button id="cropReset" data-t="bReset">Reset</button>
     </div>
   </div>
 </div>
@@ -376,7 +487,13 @@
 
   var CANVAS_CAP = 16000000;
 
-  var format = "src", targetW = null, quality = null;
+  /* 1:1 and Highest are selected from the start: a photo opens straight
+     away, untouched, so sharpening alone is a complete edit */
+  var format = "src", targetW = 0, quality = 0.90;
+  /* what a transparent photo sits on: "none" keeps the transparency, and the
+     other two paint a colour under it. A JPEG cannot hold transparency at all,
+     so it is always given a colour whatever this says. */
+  var matte = "none";
   var customMode = false, customW = null, customH = null, baseRatio = null;
   var sourceFiles = [], edits = [], results = [], urls = [], token = 0, busy = false;
   /* sharpAll drives every photo; sharps[i] is null until that photo is set
@@ -386,10 +503,138 @@
   var $ = function(id){ return document.getElementById(id); };
   var picker = $("picker"), pickBtn = $("pick"), subEl = $("sub"),
       statusEl = $("status"), stubs = $("stubs"), totalBox = $("total"),
-      shBtn = $("share"), viewer = $("viewer"), stage = $("stage"),
+      shBtn = $("share"), pdfOutBtn = $("pdfOut"),
+      seqRow = $("seqRow"), seqVal = $("seqVal"), seqDown = $("seqDown"), seqUp = $("seqUp"),
+      viewer = $("viewer"), stage = $("stage"),
       handle = $("handle"), imgOld = $("imgOld"), imgNew = $("imgNew"),
       levelsRow = $("levels"), qLabel = $("qLabel"),
+      matteWrap = $("matteWrap"), matteRow = $("mattes"),
       customRow = $("customRow"), cwEl = $("cw"), chEl = $("ch");
+
+  /* Every word the user can see, in both languages. Switching writes these into
+     the [data-t] marks already in the page and nothing else: no photo is decoded,
+     re-encoded or re-read, so the results on screen stay exactly as they are. */
+  var STR = {
+    en: {
+      onDevice:"On-Device", update:"\u21BB Update",
+      lFormat:"Format", fSource:"Source", sOrig:"Orig",
+      lMatte:"Background", mClear:"Transparent", mWhite:"White", mBlack:"Black",
+      lLongest:"Longest Side", sPx:"Px", fCustom:"Custom",
+      fW:"W", fH:"H", pW:"Width", pH:"Height",
+      lQuality:"Quality", qOff:"Quality \u2014 Not Used Here",
+      qHighest:"Highest", qHigh:"High", qMed:"Med", qLow:"Low", qLeast:"Least",
+      lSharp:"Sharpness", bChoose:"Choose Photos", bSave:"Save",
+      lSeq:"Copy No.", aSeqDown:"Lower the copy number", aSeqUp:"Raise the copy number",
+      pdfOutSave:"Save PDF", pdfOutBusy:"Building the PDF\u2026",
+      pdfOutErr:"Could not build the PDF.",
+      subHint:"Enter a width and a height", bTotal:"Total",
+      compressing:"Compressing {1} of {2}\u2026",
+      errRead:"Could not read those files. Try picking from your photo library.",
+      errOpen:"Could not open that image.",
+      errShare:"Sharing is unavailable here.",
+      errOne:"Could Not Compress", errHeic:"HEIC \u2014 Not Readable Here",
+      aEdit:"Edit", aRemove:"Remove",
+      tOrig:"Original", tComp:"Compressed",
+      vSharp:"Sharpness \u2014 This Photo", bClose:"Close",
+      rFree:"Free", bRotate:"Rotate 90\u00B0", bFlipH:"Flip H", bFlipV:"Flip V",
+      aTilt:"Tilt", aLevel:"Level",
+      bApply:"Apply", bCancel:"Cancel", bReset:"Reset",
+      hint:"Nothing leaves your phone. Tap the corner icon to crop, rotate, or flip. " +
+           "Tap the image to compare it against the original. Press and hold to inspect " +
+           "it up close: it is magnified where your finger is, and flashes the original " +
+           "in the middle so you can see what the compression took. Save opens the share " +
+           "sheet: Save Image puts it in Photos, Save to Files keeps the exact file shown here."
+    },
+    ar: {
+      onDevice:"على الجهاز", update:"\u21BB تحديث",
+      lFormat:"الصيغة", fSource:"الأصل", sOrig:"كما هي",
+      lMatte:"الخلفية", mClear:"شفافة", mWhite:"بيضاء", mBlack:"سوداء",
+      lLongest:"الضلع الأطول", sPx:"بكسل", fCustom:"مخصص",
+      fW:"عرض", fH:"ارتفاع", pW:"العرض", pH:"الارتفاع",
+      lQuality:"الجودة", qOff:"الجودة \u2014 لا تستخدم هنا",
+      qHighest:"الأعلى", qHigh:"عالية", qMed:"متوسطة", qLow:"منخفضة", qLeast:"الأدنى",
+      lSharp:"الحدة", bChoose:"اختر الصور", bSave:"حفظ",
+      lSeq:"رقم النسخة", aSeqDown:"إنقاص رقم النسخة", aSeqUp:"زيادة رقم النسخة",
+      pdfOutSave:"حفظ PDF", pdfOutBusy:"جاري إنشاء ملف PDF\u2026",
+      pdfOutErr:"تعذر إنشاء ملف PDF.",
+      subHint:"أدخل العرض أو الارتفاع", bTotal:"المجموع",
+      compressing:"جاري ضغط {1} من {2}\u2026",
+      errRead:"تعذرت قراءة هذه الملفات. جرب اختيارها من مكتبة الصور.",
+      errOpen:"تعذر فتح هذه الصورة.",
+      errShare:"المشاركة غير متاحة هنا.",
+      errOne:"تعذر الضغط", errHeic:"صيغة HEIC غير مقروءة هنا",
+      aEdit:"تعديل", aRemove:"حذف",
+      tOrig:"الأصلية", tComp:"المضغوطة",
+      vSharp:"الحدة \u2014 لهذه الصورة", bClose:"إغلاق",
+      rFree:"حر", bRotate:"تدوير 90\u00B0", bFlipH:"قلب أفقي", bFlipV:"قلب رأسي",
+      aTilt:"ميلان", aLevel:"تسوية",
+      bApply:"تطبيق", bCancel:"إلغاء", bReset:"إعادة ضبط",
+      hint:"لا شيء يغادر هاتفك. اضغط الأيقونة في زاوية الصورة للقص أو التدوير أو القلب. " +
+           "اضغط الصورة لمقارنتها بالأصل. اضغط مع الاستمرار لتتفحصها عن قرب: تتكبر عند " +
+           "موضع إصبعك، وتومض الأصلية في المنتصف لترى ما أخذه الضغط. زر الحفظ يفتح قائمة " +
+           "المشاركة: حفظ الصورة يضعها في الصور، وحفظ في الملفات يبقي الملف كما هو معروض هنا."
+    }
+  };
+
+  var lang = "en";
+  try { var kept = localStorage.getItem("fw-lang"); if (STR[kept]) lang = kept; } catch (e){}
+
+  function t(k){
+    var d = STR[lang];
+    return (d && d[k] !== undefined) ? d[k] : STR.en[k];
+  }
+
+  /* a button that carries a <small> keeps it: only the leading text node moves */
+  function setText(el, v){
+    var sm = el.querySelector("small");
+    if (sm && el.firstChild && el.firstChild.nodeType === 3) el.firstChild.nodeValue = v;
+    else el.textContent = v;
+  }
+
+  function each(sel, fn){
+    Array.prototype.forEach.call(document.querySelectorAll(sel), fn);
+  }
+
+  function applyLang(){
+    document.documentElement.lang = lang;
+    document.body.classList.toggle("ar", lang === "ar");
+    each("[data-t]",  function(el){ setText(el, t(el.getAttribute("data-t"))); });
+    each("[data-tp]", function(el){ el.placeholder = t(el.getAttribute("data-tp")); });
+    each("[data-ta]", function(el){ el.setAttribute("aria-label", t(el.getAttribute("data-ta"))); });
+    each("#lang .langBtn", function(b){
+      b.setAttribute("aria-pressed", b.dataset.l === lang ? "true" : "false");
+    });
+    paintStatus();
+    paintSave();
+    refreshGate();
+  }
+
+  each("#lang .langBtn", function(b){
+    b.addEventListener("click", function(){
+      if (b.dataset.l === lang) return;
+      lang = b.dataset.l;
+      try { localStorage.setItem("fw-lang", lang); } catch (e){}
+      applyLang();
+    });
+  });
+
+  /* On the home screen iOS freezes the app instead of closing it, so a new
+     version is never requested; a plain reload can also come straight back
+     from cache. Loading an address the phone has never seen forces a real
+     download, which is the only thing that reliably brings the update in. */
+  var reloadBtn = $("reload");
+  /* iOS only paints :active on an element that carries a touch listener,
+     and the jump below would replace the page before any flash could be
+     seen — so the press is drawn here and the jump waits for it to land */
+  reloadBtn.addEventListener("touchstart", function(){
+    this.classList.add("tapped");
+  }, { passive: true });
+  reloadBtn.addEventListener("click", function(){
+    this.classList.add("tapped");
+    setTimeout(function(){
+      location.replace(location.href.replace(/[?#].*$/, "") + "?u=" + Date.now());
+    }, 110);
+  });
 
   function bind(containerId, cb){
     var btns = $(containerId).querySelectorAll(".opt");
@@ -405,6 +650,7 @@
     });
   }
   bind("formats", function(b){ format = b.dataset.f; });
+  bind("mattes",  function(b){ matte = b.dataset.m; });
   bind("levels",  function(b){ quality = parseFloat(b.dataset.q); });
   bind("scales",  function(b){
     if (b.dataset.w === "custom"){
@@ -470,7 +716,44 @@
   function effSharp(i){ return sharps[i] === null || sharps[i] === undefined ? sharpAll : sharps[i]; }
   function readyFiles(){ return results.filter(Boolean); }
 
-  function extOf(mime){ return mime === "image/png" ? "png" : "jpg"; }
+  /* an iPhone photo arrives as HEIC when it comes from the Files app or a
+     message rather than the camera roll. The browser is what decodes it, and
+     file.type is often empty on the way in, so the name is the fallback tell. */
+  function heicIs(f){
+    var t = (f && f.type || "").toLowerCase();
+    return t === "image/heic" || t === "image/heif" || /\.hei[cf]$/i.test(f && f.name || "");
+  }
+
+  /* WEBP is not offered on a promise. A browser that cannot encode it does
+     not refuse — toBlob quietly hands back a PNG under the WEBP name, which
+     would come out heavier than the photo went in and read as a bug. So one
+     1x1 encode settles it on this device before the button is ever shown. */
+  var webpOK = false;
+  async function webpProbe(){
+    var c = null;
+    try {
+      c = document.createElement("canvas");
+      c.width = 1; c.height = 1;
+      c.getContext("2d");
+      var b = await toBlob(c, "image/webp", 0.8);
+      webpOK = !!b && b.type === "image/webp";
+    } catch (e){ webpOK = false; }
+    kill(c);
+    var btn = $("fWebp");
+    if (!btn) return;
+    if (webpOK){ btn.classList.remove("hidden"); $("formats").classList.add("wide4"); }
+    else btn.parentNode.removeChild(btn);
+    refreshGate();
+  }
+
+  /* the formats that can carry transparency out of the app */
+  function alphaFmt(mime){ return mime === "image/png" || mime === "image/webp"; }
+
+  function extOf(mime){
+    if (mime === "image/png") return "png";
+    if (mime === "image/webp") return "webp";
+    return "jpg";
+  }
   function labelOf(type){
     if (type === "image/png") return "PNG";
     if (type === "image/webp") return "WEBP";
@@ -479,9 +762,53 @@
     return "JPEG";
   }
   function outMime(file){
-    if (format === "src") return file.type === "image/png" ? "image/png" : "image/jpeg";
-    return format;
+    if (format !== "src") return format;
+    if (file.type === "image/png") return "image/png";
+    if (file.type === "image/webp" && webpOK) return "image/webp";
+    return "image/jpeg";
   }
+  /* can anything on screen actually come out transparent? Only PNG and WEBP
+     can hold it, so the answer follows the chosen format — and under Source it
+     follows what each picked file is about to become. */
+  function matteKeep(){
+    if (alphaFmt(format)) return true;
+    if (format !== "src") return false;
+    for (var i = 0; i < sourceFiles.length; i++){
+      if (sourceFiles[i] && alphaFmt(outMime(sourceFiles[i]))) return true;
+    }
+    return false;
+  }
+  /* what one photo sits on: null keeps the transparency it came with, and a
+     colour is painted underneath instead. Transparency is only ever carried by
+     a photo that has some — an opaque PNG on a transparent canvas is encoded
+     with an alpha channel it does not need and comes out a fifth heavier. */
+  function matteOf(file, mime){
+    var m = (matte === "none" && !matteKeep()) ? "white" : matte;
+    if (m === "white") return "#FFFFFF";
+    if (m === "black") return "#000000";
+    return (alphaFmt(mime) && file._alpha) ? null : "#FFFFFF";
+  }
+  /* the row only appears once a photo carrying real transparency has been seen,
+     so an ordinary camera roll never grows a control it has no use for */
+  function matteSeen(){
+    for (var i = 0; i < sourceFiles.length; i++){
+      if (sourceFiles[i] && sourceFiles[i]._alpha) return true;
+    }
+    return false;
+  }
+  function matteGate(){
+    var on = matteSeen();
+    matteWrap.classList.toggle("hidden", !on);
+    if (!on) return;
+    /* the wish is kept as the user left it: Transparent switched off by a JPEG
+       output shows White meanwhile, and comes back on its own under PNG */
+    var keep = matteKeep(), shown = (matte === "none" && !keep) ? "white" : matte;
+    Array.prototype.forEach.call(matteRow.querySelectorAll(".opt"), function(o){
+      o.setAttribute("aria-pressed", o.dataset.m === shown ? "true" : "false");
+      if (o.dataset.m === "none") o.disabled = !keep;
+    });
+  }
+
   function lossless(){
     if (format === "image/png") return true;
     if (format !== "src" || !sourceFiles.length) return false;
@@ -498,9 +825,12 @@
   function refreshGate(){
     var ll = lossless();
     levelsRow.classList.toggle("muted", ll);
-    qLabel.textContent = ll ? "Quality \u2014 not used here" : "Quality";
+    qLabel.textContent = ll ? t("qOff") : t("lQuality");
     shBtn.disabled = !(ready() && readyFiles().length);
+    pdfOutBtn.disabled = shBtn.disabled || pdfOutBusy;
     subEl.style.display = (sourceFiles.length && !ready()) ? "block" : "none";
+    matteGate();
+    fwPaintSeq();
   }
 
   function setFormatFromFiles(){
@@ -513,6 +843,7 @@
     if (!mixed){
       if (t === "image/png") want = "image/png";
       else if (t === "image/jpeg") want = "image/jpeg";
+      else if (t === "image/webp" && webpOK) want = "image/webp";
     }
     format = want;
     Array.prototype.forEach.call($("formats").querySelectorAll(".opt"), function(o){
@@ -521,19 +852,27 @@
   }
 
   pickBtn.addEventListener("click", function(){ picker.click(); });
+  /* the picker's own work, given a name so a single line can sit in front of it */
+  function acceptFiles(files){
+    if (!files || !files.length) return;
+    sourceFiles = files;
+    fwReserve(sourceFiles);
+    edits = sourceFiles.map(function(){ return null; });
+    sharps = sourceFiles.map(function(){ return null; });
+    baseRatio = null; customW = null; customH = null;
+    cwEl.value = ""; chEl.value = "";
+    setFormatFromFiles();
+    readBaseRatio().then(function(){
+      if (customMode) seedCustom();
+      refreshGate();
+      rerender();
+    });
+  }
+
   picker.addEventListener("change", function(){
     if (picker.files && picker.files.length){
-      sourceFiles = Array.prototype.slice.call(picker.files);
-      edits = sourceFiles.map(function(){ return null; });
-      sharps = sourceFiles.map(function(){ return null; });
-      baseRatio = null; customW = null; customH = null;
-      cwEl.value = ""; chEl.value = "";
-      setFormatFromFiles();
-      readBaseRatio().then(function(){
-        if (customMode) seedCustom();
-        refreshGate();
-        rerender();
-      });
+      var picked = Array.prototype.slice.call(picker.files);
+      pdfInDoor(picked, acceptFiles);   // PDF IN — on removal, replace this line with:  acceptFiles(picked);
     }
     picker.value = "";
   });
@@ -552,13 +891,142 @@
     if (b >= 10000)   return (b/1000).toFixed(1) + " KB";
     return (b/1000).toFixed(2) + " KB";
   }
-  function setStatus(m, err){
-    statusEl.textContent = m || "";
-    statusEl.className = "status" + (err ? " err" : "");
+  /* the message is kept as a key rather than as finished text, so switching
+     language repaints whatever is showing instead of wiping it */
+  var statusKey = null, statusNums = null, statusErr = false;
+  function setStatus(k, err, nums){
+    statusKey = k || null; statusErr = !!err; statusNums = nums || null;
+    paintStatus();
   }
-  function tag(){
-    var n = new Date(), p = function(v){ return (v<10?"0":"") + v; };
-    return "" + n.getFullYear() + p(n.getMonth()+1) + p(n.getDate()) + "-" + p(n.getHours()) + p(n.getMinutes());
+  function paintStatus(){
+    var m = statusKey ? t(statusKey) : "";
+    if (m && statusNums) m = m.replace("{1}", statusNums[0]).replace("{2}", statusNums[1]);
+    statusEl.textContent = m;
+    statusEl.className = "status" + (statusErr ? " err" : "");
+  }
+
+  var saveN = 0;
+  function paintSave(){
+    shBtn.textContent = saveN > 1 ? t("bSave") + " " + saveN : t("bSave");
+  }
+  /* ---- naming -------------------------------------------------------------
+     Every saved file is <source name>_FW_<yymmdd>_<nn>, extension in lower
+     case: the name it came in with, this app's mark, today's date, and a copy
+     number starting at 01. The date already separates names from different
+     days, so the number only has to separate repeats within one day — which is
+     why the counter is stored per day, dropped when the date turns over, and
+     therefore never grows. */
+  function fwStamp(){
+    var n = new Date(), p = function(v){ return (v < 10 ? "0" : "") + v; };
+    return p(n.getFullYear() % 100) + p(n.getMonth() + 1) + p(n.getDate());
+  }
+  function fwPad(n){ return (n < 10 ? "0" : "") + n; }
+
+  /* spaces become underscores and characters a filesystem refuses are dropped.
+     Arabic and any other letters are left alone — they save and open fine. */
+  function fwClean(v){
+    return (String(v || "").replace(/\.[^.\/\\]+$/, "")
+      .replace(/[\/\\:*?"<>|]+/g, "_")
+      .replace(/\s+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")) || "photo";
+  }
+
+  /* the copy number, kept in the browser so closing the app and coming back
+     the same day carries on instead of repeating a name */
+  var fwSeqDay = null, fwSeqMap = {};
+  function fwSeqLoad(){
+    var day = fwStamp();
+    if (fwSeqDay !== day){
+      fwSeqDay = day; fwSeqMap = {};
+      try {
+        var raw = JSON.parse(localStorage.getItem("fw-seq") || "null");
+        if (raw && raw.d === day && raw.n) fwSeqMap = raw.n;
+      } catch (e){}
+    }
+  }
+  function fwSeqSave(){
+    try { localStorage.setItem("fw-seq", JSON.stringify({ d: fwSeqDay, n: fwSeqMap })); } catch (e){}
+  }
+  /* the number the next save would use, without spending it */
+  function fwNext(key){ fwSeqLoad(); return (fwSeqMap[key] || 0) + 1; }
+  /* spend it — called when a file is actually handed to the share sheet */
+  function fwTake(key){
+    var n = fwNext(key);
+    fwSeqMap[key] = n; fwSeqSave();
+    return n;
+  }
+  /* and give it back when the share sheet is dismissed without saving */
+  function fwGive(key){
+    fwSeqLoad();
+    if (fwSeqMap[key] > 0){ fwSeqMap[key]--; fwSeqSave(); }
+  }
+
+  /* the name minus its copy number, fixed for as long as the files are loaded */
+  var srcBase = [], outBase = [];
+  function fwReserve(files){
+    srcBase = files.map(function(f){ return fwClean(f && f.name); });
+    outBase = srcBase.map(function(b){ return b + "_FW_" + fwStamp(); });
+  }
+  function fwKey(i){ return srcBase[i] || "photo"; }
+
+  /* the copy number belongs to each photo on its own, so the two buttons move
+     every loaded photo by the same step rather than forcing them all onto one
+     number — photos sitting on different numbers keep the gaps between them.
+     Two files that clean down to the same name share one counter, hence seen. */
+  function fwSeqRange(){
+    fwSeqLoad();
+    var lo = null, hi = null, i, v;
+    for (i = 0; i < sourceFiles.length; i++){
+      v = fwSeqMap[fwKey(i)] || 0;
+      if (lo === null || v < lo) lo = v;
+      if (hi === null || v > hi) hi = v;
+    }
+    return { lo: lo || 0, hi: hi || 0 };
+  }
+  function fwSeqShift(d){
+    if (!sourceFiles.length) return;
+    var r = fwSeqRange();
+    /* refuse the whole press at either end, so one photo hitting the wall
+       never flattens it onto the others */
+    if (d < 0 && r.lo <= 0) return;
+    if (d > 0 && r.hi >= 98) return;
+    var seen = {}, i, k;
+    for (i = 0; i < sourceFiles.length; i++){
+      k = fwKey(i);
+      if (seen[k] === 1) continue;
+      seen[k] = 1;
+      fwSeqMap[k] = (fwSeqMap[k] || 0) + d;
+    }
+    fwSeqSave();
+    repaintNames();
+  }
+  /* the readout carries the first photo's next number; each card carries its own */
+  function fwPaintSeq(){
+    var on = sourceFiles.length > 0;
+    seqRow.classList.toggle("off", !on);
+    if (!on) return;
+    var r = fwSeqRange();
+    seqVal.textContent = fwPad((fwSeqMap[fwKey(0)] || 0) + 1);
+    seqDown.disabled = r.lo <= 0;
+    seqUp.disabled = r.hi >= 98;
+  }
+  seqDown.addEventListener("click", function(){ fwSeqShift(-1); });
+  seqUp.addEventListener("click", function(){ fwSeqShift(1); });
+
+  /* what the card shows and what the next save will produce. The number is not
+     spent until the file reaches the share sheet, so re-encoding at a different
+     size or quality costs nothing — but saving the same photo twice, however
+     it was compressed in between, gives the second one its own number. */
+  function outName(i, mime){
+    return (outBase[i] || "photo") + "_" + fwPad(fwNext(fwKey(i))) + "." + extOf(mime);
+  }
+  function repaintNames(){
+    for (var i = 0; i < stubEls.length; i++){
+      var el = stubEls[i], o = el && el.querySelector(".out");
+      if (o && sourceFiles[i]) o.textContent = outName(i, outMime(sourceFiles[i]));
+    }
+    fwPaintSeq();
   }
   function toBlob(c, mime, q){
     return new Promise(function(res){
@@ -585,11 +1053,95 @@
   function dimsOf(b){ return { w: b.width || b.naturalWidth, h: b.height || b.naturalHeight }; }
   function kill(c){ if (c && c.width) { c.width = 1; c.height = 1; } }
 
-  function canvasOf(w, h){
+  /* ---- colour space -------------------------------------------------------
+     Photos out of an iPhone camera are Display P3. A plain canvas is sRGB, so
+     drawing them onto one clips every colour the narrower space cannot hold,
+     and the saturated reds and greens land flat — which reads as if the
+     compression ate them. The canvas therefore follows the source: a wide file
+     is carried wide from end to end, and anything already sRGB (screenshots,
+     downloads, rendered PDF pages) keeps the old path untouched.
+
+     Nothing widens until the whole chain is proven at runtime: the context has
+     to really be P3, and the encoder has to really tag what it writes. If
+     either is missing the app behaves exactly as it did before. */
+  var CM_WIDE = 0.46;        /* red primary X: sRGB 0.436, Display P3 0.515 */
+  var cmOK = null, cmICC = null;
+
+  function u32be(b, i){ return b[i] * 16777216 + (b[i+1] << 16 | b[i+2] << 8 | b[i+3]); }
+
+  /* an ICC profile carries "acsp" 36 bytes in, whatever wrapper holds it */
+  function iccOf(buf){
+    var b = new Uint8Array(buf), n = b.length, i, p, size;
+    for (i = 36; i < n - 4; i++){
+      if (b[i] !== 0x61 || b[i+1] !== 0x63 || b[i+2] !== 0x73 || b[i+3] !== 0x70) continue;
+      p = i - 36; size = u32be(b, p);
+      if (size < 132 || p + size > n) continue;
+      if (u32be(b, p + 128) > 200) continue;
+      return b.subarray(p, p + size);
+    }
+    return null;
+  }
+
+  /* how far out the profile's red primary sits — the whole gamut question */
+  function iccRedX(icc){
+    var n = u32be(icc, 128), i, off = 132, o;
+    for (i = 0; i < n; i++, off += 12){
+      if (off + 12 > icc.length) break;
+      if (icc[off] === 0x72 && icc[off+1] === 0x58 && icc[off+2] === 0x59 && icc[off+3] === 0x5A){
+        o = u32be(icc, off + 4);
+        if (o + 20 > icc.length) return 0;
+        return u32be(icc, o + 8) / 65536;
+      }
+    }
+    return 0;
+  }
+
+  /* one probe decides for the whole session, and keeps the profile bytes the
+     PDF writer needs to say what its pages are */
+  async function cmProbe(){
+    if (cmOK !== null) return cmOK;
+    cmOK = false;
+    try {
+      var c = document.createElement("canvas");
+      c.width = 1; c.height = 1;
+      var x = c.getContext("2d", { alpha: false, colorSpace: "display-p3" });
+      if (x && x.getContextAttributes && x.getContextAttributes().colorSpace === "display-p3"){
+        var b = await toBlob(c, "image/jpeg", 0.9);
+        if (b){
+          var icc = iccOf(await b.arrayBuffer());
+          if (icc && iccRedX(icc) > CM_WIDE){ cmICC = icc; cmOK = true; }
+        }
+      }
+    } catch (e){}
+    return cmOK;
+  }
+
+  /* sniffed once per picked file and kept on it */
+  async function cmSpace(file){
+    if (!(await cmProbe())) return null;
+    if (file._wide === undefined){
+      /* an iPhone writes HEIC in Display P3 and carries the fact in a box the
+         sniffer below cannot read, so the format itself is taken as the answer
+         — and a profile, where there is one, still overrules it */
+      file._wide = heicIs(file);
+      try {
+        var icc = iccOf(await file.slice(0, 131072).arrayBuffer());
+        if (icc) file._wide = iccRedX(icc) > CM_WIDE;
+      } catch (e){}
+    }
+    return file._wide ? "display-p3" : null;
+  }
+
+  /* bg is the colour painted underneath before anything is drawn; null asks
+     for a canvas that keeps whatever transparency the photo has, and leaving
+     it out gives the plain white one the rest of the app has always used */
+  function canvasOf(w, h, space, bg){
     var c = document.createElement("canvas");
     c.width = w; c.height = h;
-    var x = c.getContext("2d", { alpha: false });
-    x.fillStyle = "#fff"; x.fillRect(0, 0, w, h);
+    var a = (bg === null), x = null;
+    if (space){ try { x = c.getContext("2d", { alpha: a, colorSpace: space }); } catch (e){} }
+    if (!x) x = c.getContext("2d", { alpha: a });
+    if (!a){ x.fillStyle = bg || "#fff"; x.fillRect(0, 0, w, h); }
     x.imageSmoothingEnabled = true;
     if (x.imageSmoothingQuality) x.imageSmoothingQuality = "high";
     return c;
@@ -608,7 +1160,7 @@
 
   /* free tilt cannot use a source rect, so it redraws the whole transform
      and lifts the crop straight out of it */
-  function cropTilted(bmp, bw, bh, edit){
+  function cropTilted(bmp, bw, bh, edit, space, bg){
     var o = orientedSize(bw, bh, edit.rot || 0);
     var sw = Math.max(1, edit.sw), sh = Math.max(1, edit.sh);
 
@@ -618,7 +1170,7 @@
     var ph = Math.max(1, Math.round(sh * k));
 
     var cv = coverScale(o.w, o.h, edit.free);
-    var out = canvasOf(pw, ph);
+    var out = canvasOf(pw, ph, space, bg);
     var x = out.getContext("2d");
     x.scale(k, k);
     x.translate(-edit.sx, -edit.sy);
@@ -649,8 +1201,8 @@
     return r;
   }
 
-  function cropAndOrient(bmp, bw, bh, edit){
-    if (edit.free) return cropTilted(bmp, bw, bh, edit);
+  function cropAndOrient(bmp, bw, bh, edit, space, bg){
+    if (edit.free) return cropTilted(bmp, bw, bh, edit, space, bg);
 
     var r = toSourceRect(bw, bh, edit);
     r.x = Math.max(0, Math.min(r.x, bw - 1));
@@ -663,7 +1215,7 @@
     var pw = Math.max(1, Math.round(r.w * k));
     var ph = Math.max(1, Math.round(r.h * k));
 
-    var piece = canvasOf(pw, ph);
+    var piece = canvasOf(pw, ph, space, bg);
     piece.getContext("2d").drawImage(bmp, r.x, r.y, r.w, r.h, 0, 0, pw, ph);
 
     var rot = edit.rot || 0;
@@ -671,7 +1223,7 @@
 
     var ow = (rot % 180 === 0) ? pw : ph;
     var oh = (rot % 180 === 0) ? ph : pw;
-    var out = canvasOf(ow, oh);
+    var out = canvasOf(ow, oh, space, bg);
     var x = out.getContext("2d");
     x.translate(ow / 2, oh / 2);
     x.rotate(rot * Math.PI / 180);
@@ -682,22 +1234,22 @@
     return { src: out, w: ow, h: oh, temp: out };
   }
 
-  function buildEdited(bmp, bw, bh, edit){
+  function buildEdited(bmp, bw, bh, edit, space, bg){
     if (!edit) return { src: bmp, w: bw, h: bh, temp: null };
-    return cropAndOrient(bmp, bw, bh, edit);
+    return cropAndOrient(bmp, bw, bh, edit, space, bg);
   }
 
-  function stepDown(src, ow, oh, tw, th){
+  function stepDown(src, ow, oh, tw, th, space, bg){
     var cw = ow, ch = oh, cur = src, canvas = null;
     while (cw > tw * 2 && ch > th * 2){
       cw = Math.max(tw, Math.round(cw / 2));
       ch = Math.max(th, Math.round(ch / 2));
-      var next = canvasOf(cw, ch);
+      var next = canvasOf(cw, ch, space, bg);
       next.getContext("2d").drawImage(cur, 0, 0, cw, ch);
       if (canvas) kill(canvas);
       canvas = next; cur = next;
     }
-    var out = canvasOf(tw, th);
+    var out = canvasOf(tw, th, space, bg);
     out.getContext("2d").drawImage(cur, 0, 0, tw, th);
     if (canvas) kill(canvas);
     return out;
@@ -722,15 +1274,74 @@
     ctx.putImageData(d, 0, 0);
   }
 
+  /* the same lift, for a photo that keeps its transparency. A neighbour that is
+     not there has no colour of its own, so each colour is weighted by its own
+     alpha before the four are compared and the weight is taken back out after —
+     without that, every edge of a cut-out is dragged towards black. Alpha is
+     sharpened alongside them, so the edge stays as crisp as the colour does. */
+  function sharpenAlpha(ctx, w, h, amt){
+    if (w < 3 || h < 3 || amt <= 0) return;
+    var d = ctx.getImageData(0, 0, w, h), px = d.data;
+    var src = new Uint8ClampedArray(px), n = src.length, i, x, y, k, a, f;
+    var v = [0, 0, 0, 0];
+    for (i = 0; i < n; i += 4){
+      a = src[i+3] / 255;
+      src[i] = px[i] * a; src[i+1] = px[i+1] * a; src[i+2] = px[i+2] * a;
+    }
+    var c = 1 + 4 * amt;
+    for (y = 1; y < h - 1; y++){
+      for (x = 1; x < w - 1; x++){
+        i = (y * w + x) * 4;
+        for (k = 0; k < 4; k++){
+          a = src[i+k] * c
+            - amt * (src[i - 4 + k] + src[i + 4 + k] + src[i - w*4 + k] + src[i + w*4 + k]);
+          v[k] = a < 0 ? 0 : (a > 255 ? 255 : a);
+        }
+        f = v[3] > 0 ? 255 / v[3] : 0;
+        px[i] = v[0] * f; px[i+1] = v[1] * f; px[i+2] = v[2] * f; px[i+3] = v[3];
+      }
+    }
+    ctx.putImageData(d, 0, 0);
+  }
+
+  /* JPEG cannot carry transparency, so only a format that can is ever looked
+     at, and only once per file: a thumbnail is enough to tell a cut-out from a
+     screenshot, and it is what decides whether the Background row is shown */
+  function alphaSniff(file, bmp){
+    if (!file || file._alpha !== undefined) return;
+    file._alpha = false;
+    var t = file.type;
+    if (t !== "image/png" && t !== "image/webp" && t !== "image/gif") return;
+    var c = null;
+    try {
+      var d = dimsOf(bmp), s = Math.min(1, 160 / Math.max(d.w, d.h));
+      var w = Math.max(1, Math.round(d.w * s)), h = Math.max(1, Math.round(d.h * s));
+      c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      var x = c.getContext("2d");
+      x.drawImage(bmp, 0, 0, w, h);
+      var px = x.getImageData(0, 0, w, h).data;
+      for (var i = 3; i < px.length; i += 4){
+        if (px[i] < 250){ file._alpha = true; break; }
+      }
+    } catch (e){}
+    kill(c);
+  }
+
   async function process(file, edit, longest, q, mime, sharp){
+    var space = await cmSpace(file);
     var bmp = await decode(file);
+    alphaSniff(file, bmp);
+    var bg = matteOf(file, mime);
     var d0 = dimsOf(bmp);
-    var e = buildEdited(bmp, d0.w, d0.h, edit);
+    var e = buildEdited(bmp, d0.w, d0.h, edit, space, bg);
     var ow = e.w, oh = e.h, w = ow, h = oh;
     var maxSide = Math.max(ow, oh);
 
+    /* the left-hand side of the compare viewer: it has to keep transparency
+       too, or the photo would be judged against a black flattening of itself */
     var refBlob = null;
-    if (edit) refBlob = await toBlob(e.src, "image/jpeg", 0.95);
+    if (edit) refBlob = await toBlob(e.src, bg === null ? "image/png" : "image/jpeg", 0.95);
 
     if (longest > 0 && maxSide > longest){
       var s = longest / maxSide;
@@ -738,25 +1349,28 @@
       h = Math.max(1, Math.round(oh * s));
     }
 
-    var canvas = stepDown(e.src, ow, oh, w, h);
+    var canvas = stepDown(e.src, ow, oh, w, h, space, bg);
     release(bmp);
     if (e.temp) kill(e.temp);
 
-    if (sharp > 0) sharpen(canvas.getContext("2d"), w, h, sharp);
+    if (sharp > 0) (bg === null ? sharpenAlpha : sharpen)(canvas.getContext("2d"), w, h, sharp);
 
     var blob = await toBlob(canvas, mime, q);
     kill(canvas);
     if (!blob) throw new Error("encode");
-    return { blob: blob, refBlob: refBlob, w: w, h: h, ow: ow, oh: oh };
+    return { blob: blob, refBlob: refBlob, w: w, h: h, ow: ow, oh: oh,
+             p3: !!space, clear: bg === null };
   }
 
   async function previewOnly(file, edit){
+    var space = await cmSpace(file);
     var bmp = await decode(file);
+    alphaSniff(file, bmp);
     var d0 = dimsOf(bmp);
-    var e = buildEdited(bmp, d0.w, d0.h, edit);
+    var e = buildEdited(bmp, d0.w, d0.h, edit, space);
     var s = Math.min(1, 1000 / Math.max(e.w, e.h));
     var w = Math.max(1, Math.round(e.w * s)), h = Math.max(1, Math.round(e.h * s));
-    var c = stepDown(e.src, e.w, e.h, w, h);
+    var c = stepDown(e.src, e.w, e.h, w, h, space);
     var blob = await toBlob(c, "image/jpeg", 0.85);
     release(bmp);
     if (e.temp) kill(e.temp);
@@ -765,19 +1379,53 @@
   }
 
   function editIcon(){
-    return '<button class="editBtn" aria-label="Edit"><svg viewBox="0 0 24 24">' +
+    return '<button class="editBtn" data-ta="aEdit" aria-label="' + t("aEdit") + '"><svg viewBox="0 0 24 24">' +
            '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>' +
            '</svg></button>';
   }
 
   function delIcon(){
-    return '<button class="delBtn" aria-label="Remove"><svg viewBox="0 0 24 24">' +
+    return '<button class="delBtn" data-ta="aRemove" aria-label="' + t("aRemove") + '"><svg viewBox="0 0 24 24">' +
            '<path d="M6 6l12 12M18 6L6 18"/>' +
            '</svg></button>';
   }
 
+  /* the editor and the compare view cover the whole screen; the page beneath is
+     frozen where it stands so closing them lands back on the same photo */
+  var lockY = 0, locks = 0;
+  function lockPage(){
+    if (locks++) return;
+    lockY = window.pageYOffset || document.documentElement.scrollTop || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = (-lockY) + "px";
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+  }
+  function unlockPage(){
+    if (!locks || --locks) return;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    window.scrollTo(0, lockY);
+  }
+
+  /* rebuilding the list empties it first, which would drop the page to the top;
+     the old height is held until the cards are back, then the scroll is restored */
+  function holdScroll(){
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    stubs.style.minHeight = stubs.offsetHeight + "px";
+    return function(){
+      stubs.style.minHeight = "";
+      window.scrollTo(0, y);
+    };
+  }
+
   async function showOriginals(){
     var mine = ++token;
+    var back = holdScroll();
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
     urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
@@ -798,12 +1446,14 @@
           delIcon() +
           '<div class="stamp idle"></div>' +
           '<div class="name"></div>' +
+          '<div class="out"></div>' +
           '<div class="nums"><span class="old"></span></div>' +
           '<div class="dim"></div>' +
         '</div>' +
         '<div class="shot">' + editIcon() + '<img alt=""></div>';
       el.querySelector(".stamp").textContent = labelOf(f.type);
       el.querySelector(".name").textContent = f.name;
+      el.querySelector(".out").textContent = outName(i, outMime(f));
       el.querySelector(".old").textContent = fmt(f.size);
       el.querySelector(".dim").textContent = p.w + "\u00D7" + p.h;
       el.querySelector(".shot img").src = p.url;
@@ -812,6 +1462,7 @@
       stubs.appendChild(el);
     }
     refreshGate();
+    back();
   }
 
   async function run(){
@@ -819,43 +1470,47 @@
     var mine = ++token;
     if (busy) return;
     busy = true;
+    var back = holdScroll();
 
     urls.forEach(function(u){ URL.revokeObjectURL(u); });
     urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
     shBtn.disabled = true;
 
-    var base = tag(), tOld = 0, tNew = 0, i;
+    var tOld = 0, tNew = 0, i;
     var longest = longestTarget();
 
     for (i = 0; i < sourceFiles.length; i++){
       if (mine !== token) break;
       var f = sourceFiles[i];
       if (!f) break;
-      setStatus("Compressing " + (i+1) + " of " + sourceFiles.length + "\u2026");
+      setStatus("compressing", false, [i+1, sourceFiles.length]);
       try {
         var mime = outMime(f);
         var q = quality === null ? 0.75 : quality;
         var r = await process(f, edits[i], longest, q, mime, effSharp(i));
         if (mine !== token) break;
-        var out = new File([r.blob], "fw-" + base + "-" + (i+1) + "." + extOf(mime), { type: mime });
+        var out = new File([r.blob], outName(i, mime), { type: mime });
+        out._p3 = r.p3;
         results[i] = out;
         tOld += f.size; tNew += r.blob.size;
         addStub(out, f, r, i);
-      } catch (e){ addFail(f.name, i); }
+        matteGate();
+      } catch (e){ addFail(f.name, i, heicIs(f) ? "errHeic" : "errOne"); }
     }
 
     busy = false;
     if (mine !== token){ rerender(); return; }
 
     var done = readyFiles();
-    if (!done.length){ setStatus("Could not read those files. Try picking from your photo library.", true); return; }
+    if (!done.length){ back(); setStatus("errRead", true); return; }
     setStatus("");
+    back();
     $("tOld").textContent = fmt(tOld);
     $("tNew").textContent = fmt(tNew);
     totalBox.classList.remove("hidden");
     refreshGate();
-    shBtn.textContent = done.length > 1 ? "Save " + done.length : "Save";
+    saveN = done.length; paintSave();
   }
 
   function retotal(){
@@ -892,19 +1547,24 @@
         delIcon() +
         '<div class="stamp"></div>' +
         '<div class="name"></div>' +
+        '<div class="out"></div>' +
         '<div class="nums"><span class="old"></span>' +
         '<span class="arrow">&rarr;</span><span class="new"></span></div>' +
         '<div class="dim"></div>' +
       '</div>' +
-      '<div class="shot">' + editIcon() + '<img alt=""></div>';
+      '<div class="shot">' + editIcon() + '<img alt="">' +
+        '<img class="peek pNew" alt=""><img class="peek pOrig" alt="">' +
+        '<span class="peekTag"></span></div>';
 
     el.querySelector(".name").textContent = original.name;
+    el.querySelector(".out").textContent = file.name;
     fillStub(el, file, original, r);
 
     /* kept on the node so a later reprocess can swap it without rebinding */
     el._view = { refUrl: refUrl, newUrl: newUrl, r: r, oldSize: original.size, newSize: file.size };
 
     var shot = el.querySelector(".shot");
+    shot.classList.toggle("clear", !!r.clear);
     shot.querySelector("img").src = newUrl;
     shot.addEventListener("click", function(e){
       if (e.target.closest(".editBtn")) return;
@@ -913,38 +1573,57 @@
     });
     wireEdit(el, idx);
     wireDelete(el, idx);
+    wirePeek(el);
     stubEls[idx] = el;
     stubs.appendChild(el);
   }
 
-  function addFail(name, idx){
+  function addFail(name, idx, key){
+    var k = key || "errOne";
     var el = document.createElement("div");
     el.className = "stub";
     el.innerHTML = '<div class="meta">' + delIcon() + '<div class="name"></div>' +
-      '<div class="nums" style="color:#BF3B2B">Could not compress</div></div>';
+      '<div class="nums" data-t="' + k + '" style="color:#BF3B2B">' + t(k) + '</div></div>';
     el.querySelector(".name").textContent = name;
     wireDelete(el, idx);
     stubs.appendChild(el);
   }
 
-  var viewIdx = -1;
+  var viewIdx = -1, viewR = null;
+
+  /* the photo gets whatever room is left once the numbers, the slider and the close
+     button have taken theirs — a fixed fraction of the screen overflowed the column,
+     and the stage was quietly squashed to fit, which stretched the photo inside it */
+  function fitStage(r){
+    var vcs = getComputedStyle(viewer), used = 0;
+    ["viewerCap", "viewSharp", "closeBtn"].forEach(function(id){
+      var n = $(id), cs = getComputedStyle(n);
+      used += n.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+    });
+    var vw = Math.min(viewer.clientWidth - parseFloat(vcs.paddingLeft)
+                      - parseFloat(vcs.paddingRight), 900);
+    var vh = viewer.clientHeight - parseFloat(vcs.paddingTop)
+             - parseFloat(vcs.paddingBottom) - used;
+    var s = Math.min(vw / r.ow, Math.max(80, vh) / r.oh);
+    stage.style.width  = Math.round(r.ow * s) + "px";
+    stage.style.height = Math.round(r.oh * s) + "px";
+  }
 
   function openViewer(idx, oldUrl, newUrl, r, oldSize, newSize){
     viewIdx = idx;
+    viewR = r;
     imgOld.src = oldUrl;
     imgNew.src = newUrl;
-    var vw = Math.min(window.innerWidth - 20, 900);
-    var vh = window.innerHeight * 0.76;
-    var s = Math.min(vw / r.ow, vh / r.oh);
-    stage.style.width  = Math.round(r.ow * s) + "px";
-    stage.style.height = Math.round(r.oh * s) + "px";
+    stage.classList.toggle("clear", !!r.clear);
     stage.style.setProperty("--split", "50%");
     $("capOldDim").textContent  = r.ow + "\u00D7" + r.oh;
     $("capOldSize").textContent = fmt(oldSize);
     $("capNewDim").textContent  = r.w + "\u00D7" + r.h;
     $("capNewSize").textContent = fmt(newSize);
     $("oneSharp").value = effSharp(idx);
+    lockPage();
     viewer.classList.remove("hidden");
+    fitStage(r);
   }
 
   /* one photo, re-encoded at the real output size so what is shown is what saves */
@@ -959,8 +1638,9 @@
       var r = await process(f, edits[idx], longestTarget(), q, mime, effSharp(idx));
       if (mine !== sharpToken || base !== token){ $("viewSharp").classList.remove("busy"); return; }
 
-      var name = results[idx] ? results[idx].name : "fw-" + tag() + "-" + (idx+1) + "." + extOf(mime);
+      var name = results[idx] ? results[idx].name : outName(idx, mime);
       var out = new File([r.blob], name, { type: mime });
+      out._p3 = r.p3;
       results[idx] = out;
 
       var newUrl = URL.createObjectURL(out);
@@ -968,10 +1648,12 @@
       urls.push(newUrl, refUrl);
 
       fillStub(el, out, f, r);
+      el.querySelector(".shot").classList.toggle("clear", !!r.clear);
       el.querySelector(".shot img").src = newUrl;
       el._view = { refUrl: refUrl, newUrl: newUrl, r: r, oldSize: f.size, newSize: out.size };
 
       if (viewIdx === idx && !viewer.classList.contains("hidden")){
+        viewR = r;
         imgOld.src = refUrl;
         imgNew.src = newUrl;
         $("capNewSize").textContent = fmt(out.size);
@@ -1014,8 +1696,13 @@
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   });
+  window.addEventListener("resize", function(){
+    if (viewR && !viewer.classList.contains("hidden")) fitStage(viewR);
+  });
+
   $("closeBtn").addEventListener("click", function(){
     viewer.classList.add("hidden");
+    unlockPage();
     imgOld.removeAttribute("src"); imgNew.removeAttribute("src");
   });
 
@@ -1036,6 +1723,109 @@
     });
   }
 
+  /* Press and hold a photo and it grows to twice its size under the finger, then walks
+     through what the compression did: the compressed photo first, the original in the
+     middle as the reference, then back to the compressed one, which stays until the
+     finger lifts — so the last thing seen is the one that will be saved.
+     The original gets the longer beat: it is the one being read for detail, while the
+     compressed one is already familiar from the card. */
+  var HOLD = 450, BEAT = 750, LOOK = 1500;
+
+  function wirePeek(el){
+    var shot = el.querySelector(".shot");
+    if (!shot) return;
+    var pNew = shot.querySelector(".pNew"), pOrig = shot.querySelector(".pOrig"),
+        tagEl = shot.querySelector(".peekTag");
+    if (!pNew || !pOrig || !tagEl) return;
+    var timer = 0, beat = 0, on = false, sx = 0, sy = 0, ox = 0, oy = 0, ax = 0, ay = 0;
+
+    /* ox, oy is the anchor inside the frame: the spot that stays put while the rest
+       grows around it, which is what keeps the frame covered from any press point */
+    function setOrigin(){
+      var r = shot.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      var o = (Math.max(0, Math.min(1, ox / r.width)) * 100).toFixed(2) + "% " +
+              (Math.max(0, Math.min(1, oy / r.height)) * 100).toFixed(2) + "%";
+      pNew.style.transformOrigin = o;
+      pOrig.style.transformOrigin = o;
+    }
+
+    function show(orig){
+      shot.classList.toggle("orig", orig);
+      tagEl.textContent = orig ? t("tOrig") : t("tComp");
+    }
+
+    /* the original is the only one that may still be decoding: it is the full-size
+       reference, while the compressed one is already on screen behind the hold */
+    function whenOrigReady(fn){
+      if (pOrig.complete && pOrig.naturalWidth) fn();
+      else pOrig.onload = function(){ if (on) fn(); };
+    }
+
+    /* the finger comes up and everything goes, in one frame — no fade, so the eye
+       catches the difference; dropping the srcs frees the decoded full-size image */
+    function stop(){
+      if (timer){ clearTimeout(timer); timer = 0; }
+      if (beat){ clearTimeout(beat); beat = 0; }
+      if (on){ on = false; shot.classList.remove("peeking", "orig"); }
+      pOrig.onload = null;
+      if (pNew.getAttribute("src")) pNew.removeAttribute("src");
+      if (pOrig.getAttribute("src")) pOrig.removeAttribute("src");
+    }
+
+    shot.addEventListener("touchstart", function(e){
+      stop();
+      if (e.touches.length !== 1) return;
+      if (e.target.closest(".editBtn")) return;
+      var v = el._view;
+      if (!v || !v.refUrl || !v.newUrl) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      /* decoding starts now, so each step of the hold lands without a stall */
+      pNew.src = v.newUrl;
+      pOrig.src = v.refUrl;
+      timer = setTimeout(function(){
+        timer = 0; on = true;
+        var r = shot.getBoundingClientRect();
+        ox = sx - r.left; oy = sy - r.top; ax = sx; ay = sy;
+        setOrigin();
+        show(false);
+        shot.classList.add("peeking");
+        beat = setTimeout(function(){
+          beat = 0;
+          whenOrigReady(function(){
+            show(true);
+            beat = setTimeout(function(){ beat = 0; show(false); }, LOOK);
+          });
+        }, BEAT);
+      }, HOLD);
+    }, { passive: true });
+
+    shot.addEventListener("touchmove", function(e){
+      var t = e.touches[0];
+      if (!t) return;
+      if (on){
+        e.preventDefault();
+        /* the picture travels with the finger, so the anchor walks the other way;
+           moving it by the same distance makes the two track each other exactly */
+        var r = shot.getBoundingClientRect();
+        ox = Math.max(0, Math.min(r.width,  ox - (t.clientX - ax)));
+        oy = Math.max(0, Math.min(r.height, oy - (t.clientY - ay)));
+        ax = t.clientX; ay = t.clientY;
+        setOrigin();
+        return;
+      }
+      if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) stop();
+    }, { passive: false });
+
+    shot.addEventListener("touchend", function(e){
+      if (on) e.preventDefault();       /* swallow the tap that would open the compare view */
+      stop();
+    }, { passive: false });
+
+    shot.addEventListener("touchcancel", stop);
+    shot.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+  }
+
   function wireDelete(el, idx){
     var b = el.querySelector(".delBtn");
     if (!b) return;
@@ -1048,6 +1838,10 @@
   async function removeAt(idx){
     if (idx < 0 || idx >= sourceFiles.length) return;
     sourceFiles.splice(idx, 1);
+    /* the name lists are indexed the same way, so they have to lose the same
+       slot — otherwise every card below the deleted one inherits its name */
+    srcBase.splice(idx, 1);
+    outBase.splice(idx, 1);
     edits.splice(idx, 1);
     sharps.splice(idx, 1);
     stubEls.splice(idx, 1);
@@ -1062,7 +1856,7 @@
     urls = []; results = []; stubEls = []; stubs.innerHTML = "";
     totalBox.classList.add("hidden");
     baseRatio = null;
-    shBtn.textContent = "Save";
+    saveN = 0; paintSave();
     setStatus("");
     refreshGate();
   }
@@ -1074,12 +1868,14 @@
     cFH = e ? !!e.fh : false;
     cFV = e ? !!e.fv : false;
     cFree = e ? (e.free || 0) : 0;
+    ratioVal = e ? (e.ratio || 0) : 0;
+    setRatioButtons(ratioVal);
     $("flipH").setAttribute("aria-pressed", cFH ? "true" : "false");
     $("flipV").setAttribute("aria-pressed", cFV ? "true" : "false");
     $("tilt").value = cFree;
 
     try { cBmp = await decode(sourceFiles[idx]); }
-    catch (err){ setStatus("Could not open that image.", true); return; }
+    catch (err){ setStatus("errOpen", true); return; }
     var d0 = dimsOf(cBmp);
     bw0 = d0.w; bh0 = d0.h;
 
@@ -1089,6 +1885,7 @@
       fw = e.sw * viewK; fh = e.sh * viewK;
     } else resetFrame();
     layoutFrame();
+    lockPage();
     cropper.classList.remove("hidden");
   }
 
@@ -1114,7 +1911,7 @@
 
     var iw = (cRot % 180 === 0) ? pw : ph;
     var ih = (cRot % 180 === 0) ? ph : pw;
-    var x = cropCanvas.getContext("2d");
+    var x = cropCanvas.getContext("2d", cmOK ? { colorSpace: "display-p3" } : undefined);
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.imageSmoothingEnabled = true;
     if (x.imageSmoothingQuality) x.imageSmoothingQuality = "high";
@@ -1271,6 +2068,7 @@
 
   function closeEditor(){
     cropper.classList.add("hidden");
+    unlockPage();
     release(cBmp);
     cBmp = null;
   }
@@ -1287,23 +2085,289 @@
 
     var whole = (sx === 0 && sy === 0 && sw === oW && sh === oH);
     if (whole && cRot === 0 && !cFH && !cFV && !cFree) edits[cropIdx] = null;
-    else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree };
+    else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree, ratio: ratioVal };
 
     closeEditor();
     rerender();
   });
 
-  shBtn.addEventListener("click", async function(){
-    var files = readyFiles();
-    if (!files.length) return;
-    if (navigator.canShare && navigator.canShare({ files: files })){
-      try { await navigator.share({ files: files }); return; }
-      catch (e){ if (e && e.name === "AbortError") return; }
+  /* ---- PDF output ---------------------------------------------------------
+     Our own writer: no library, no dependency. Every result becomes one page
+     at 150dpi. A JPEG result is embedded byte for byte through /DCTDecode, so
+     the page holds exactly the file shown on screen and nothing is compressed
+     twice. A PNG result asked for no loss, so it goes in losslessly instead:
+     raw pixels deflated, which is the same compression a PNG file itself uses.
+     That page is far heavier than a JPEG one — the trade the format choice
+     already made. Phones older than iOS 16.4 have no CompressionStream, and
+     there the page falls back to JPEG rather than failing. */
+  var pdfOutBusy = false;
+
+  function pdfOutStr(v){
+    var a = new Uint8Array(v.length), i;
+    for (i = 0; i < v.length; i++) a[i] = v.charCodeAt(i) & 255;
+    return a;
+  }
+
+  function pdfOutBuild(pages, icc){
+    var parts = [], len = 0, off = [], i;
+    function put(v){
+      var a = (typeof v === "string") ? pdfOutStr(v) : v;
+      parts.push(a); len += a.length;
     }
-    setStatus("Sharing is unavailable here.", true);
+    var n = pages.length, wide = false;
+    for (i = 0; i < n; i++) if (pages[i].p3) wide = true;
+    /* a page written in P3 has to say so, or a reader takes it for sRGB and
+       flattens exactly the colours the pipeline just kept */
+    var iccN = (wide && icc) ? 3 + n * 3 : 0;
+    var last = 2 + n * 3 + (iccN ? 1 : 0), kids = "";
+    for (i = 0; i < n; i++) kids += (5 + i * 3) + " 0 R ";
+
+    put("%PDF-1.4\n%\u00E2\u00E3\u00CF\u00D3\n");
+    off[1] = len;
+    put("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+    off[2] = len;
+    put("2 0 obj\n<< /Type /Pages /Kids [" + kids.replace(/ $/, "") + "] /Count " + n + " >>\nendobj\n");
+
+    for (i = 0; i < n; i++){
+      var pg = pages[i], oI = 3 + i * 3, oC = 4 + i * 3, oP = 5 + i * 3;
+      var w = (pg.w * 72 / 150).toFixed(2), h = (pg.h * 72 / 150).toFixed(2);
+      var csp = (iccN && pg.p3) ? "[/ICCBased " + iccN + " 0 R]" : "/DeviceRGB";
+      off[oI] = len;
+      put(oI + " 0 obj\n<< /Type /XObject /Subtype /Image /Width " + pg.w +
+          " /Height " + pg.h + " /ColorSpace " + csp + " /BitsPerComponent 8" +
+          " /Filter /" + (pg.flate ? "FlateDecode" : "DCTDecode") +
+          " /Length " + pg.bytes.length + " >>\nstream\n");
+      put(pg.bytes);
+      put("\nendstream\nendobj\n");
+      var cs = "q " + w + " 0 0 " + h + " 0 0 cm /Im0 Do Q\n";
+      off[oC] = len;
+      put(oC + " 0 obj\n<< /Length " + cs.length + " >>\nstream\n" + cs + "endstream\nendobj\n");
+      off[oP] = len;
+      put(oP + " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + w + " " + h +
+          "] /Resources << /XObject << /Im0 " + oI + " 0 R >> >> /Contents " + oC + " 0 R >>\nendobj\n");
+    }
+
+    if (iccN){
+      off[iccN] = len;
+      put(iccN + " 0 obj\n<< /N 3 /Alternate /DeviceRGB /Length " + icc.length + " >>\nstream\n");
+      put(icc);
+      put("\nendstream\nendobj\n");
+    }
+
+    var start = len, x = "xref\n0 " + (last + 1) + "\n0000000000 65535 f \n";
+    for (i = 1; i <= last; i++) x += ("0000000000" + off[i]).slice(-10) + " 00000 n \n";
+    x += "trailer\n<< /Size " + (last + 1) + " /Root 1 0 R >>\nstartxref\n" + start + "\n%%EOF\n";
+    put(x);
+    return new Blob(parts, { type: "application/pdf" });
+  }
+
+  async function pdfOutFlate(bmp, d, p3){
+    if (typeof CompressionStream !== "function") return null;
+    var c = canvasOf(d.w, d.h, p3 ? "display-p3" : null), x = c.getContext("2d");
+    x.drawImage(bmp, 0, 0);
+    var px = x.getImageData(0, 0, d.w, d.h).data;
+    kill(c);
+    var n = d.w * d.h, rgb = new Uint8Array(n * 3), i, j = 0;
+    for (i = 0; i < n; i++){
+      rgb[j++] = px[i*4]; rgb[j++] = px[i*4+1]; rgb[j++] = px[i*4+2];
+    }
+    var st = new Blob([rgb]).stream().pipeThrough(new CompressionStream("deflate"));
+    return new Uint8Array(await new Response(st).arrayBuffer());
+  }
+
+  async function pdfOutPages(files){
+    var pages = [], i;
+    for (i = 0; i < files.length; i++){
+      var f = files[i], bmp = null, c = null;
+      try {
+        bmp = await decode(f);
+        var d = dimsOf(bmp), p3 = !!f._p3;
+        if (f.type === "image/jpeg"){
+          pages.push({ bytes: new Uint8Array(await f.arrayBuffer()), w: d.w, h: d.h, flate: false, p3: p3 });
+        } else {
+          /* a WEBP page cannot go into a PDF as it is — the format does not
+             exist there — and the lossless route would make the document some
+             six times heavier than the very files WEBP was chosen to keep
+             small, so it takes the JPEG path below instead */
+          var z = f.type === "image/webp" ? null : await pdfOutFlate(bmp, d, p3);
+          if (z){
+            pages.push({ bytes: z, w: d.w, h: d.h, flate: true, p3: p3 });
+          } else {
+            c = canvasOf(d.w, d.h, p3 ? "display-p3" : null);
+            c.getContext("2d").drawImage(bmp, 0, 0);
+            var b = await toBlob(c, "image/jpeg", 0.92);
+            pages.push({ bytes: new Uint8Array(await b.arrayBuffer()), w: d.w, h: d.h, flate: false, p3: p3 });
+          }
+        }
+      } finally { release(bmp); kill(c); }
+    }
+    return pages;
+  }
+
+  pdfOutBtn.addEventListener("click", async function(){
+    var files = readyFiles();
+    if (!files.length || pdfOutBusy) return;
+    pdfOutBusy = true;
+    pdfOutBtn.disabled = true;
+    setStatus("pdfOutBusy");
+    try {
+      var first = 0;
+      while (first < results.length && !results[first]) first++;
+      var pb = (srcBase[first] || "FEATHER").replace(/_SHEET\d+$/, "");
+      var pk = "pdf:" + pb;
+      var pn = pb + "_FW_" + fwStamp() + "_" + fwPad(fwTake(pk)) + ".pdf";
+      var one = new File([pdfOutBuild(await pdfOutPages(files), cmICC)], pn,
+                         { type: "application/pdf" });
+      setStatus("");
+      if (navigator.canShare && navigator.canShare({ files: [one] })){
+        try { await navigator.share({ files: [one] }); }
+        catch (e){ fwGive(pk); if (!e || e.name !== "AbortError") setStatus("errShare", true); }
+      } else { fwGive(pk); setStatus("errShare", true); }
+    } catch (e){
+      setStatus("pdfOutErr", true);
+    }
+    pdfOutBusy = false;
+    refreshGate();
   });
 
-  refreshGate();
+  shBtn.addEventListener("click", async function(){
+    var idx = [], i;
+    for (i = 0; i < results.length; i++) if (results[i]) idx.push(i);
+    if (!idx.length) return;
+
+    var keys = [], files = idx.map(function(i){
+      var k = fwKey(i), n = fwTake(k);
+      keys.push(k);
+      var nm = (outBase[i] || "photo") + "_" + fwPad(n) + "." + extOf(results[i].type);
+      var re = new File([results[i]], nm, { type: results[i].type });
+      re._p3 = results[i]._p3;
+      results[i] = re;
+      return re;
+    });
+    var undo = function(){ keys.forEach(fwGive); repaintNames(); };
+
+    if (navigator.canShare && navigator.canShare({ files: files })){
+      try { await navigator.share({ files: files }); repaintNames(); return; }
+      catch (e){ undo(); if (e && e.name === "AbortError") return; }
+    } else { undo(); }
+    setStatus("errShare", true);
+  });
+
+  // ===== PDF IN — start · everything between these markers is deletable =====
+  /* Reading PDF files is the only part of FEATHER that leans on code we did not
+     write. It is fenced so that it can be taken out at any point in the future,
+     in minutes, however many versions have been built on top of it:
+
+       1. delete the folder vendor/
+       2. delete everything between these two markers
+       3. find the line marked "PDF IN — on removal" and do what it says there
+       4. grep -in "pdfin\|pdf_in" index.html must then come back empty
+
+     Nothing outside this block was altered to accommodate PDF. The picker's
+     accept attribute and the two status strings are widened from in here, at
+     run time, and the library has no script tag of its own — it is fetched the
+     first time a PDF is actually picked, so a user who only ever opens photos
+     never downloads it. cMapUrl and standardFontDataUrl are deliberately left
+     unset: with no URL to fetch from, the library makes no network request, and
+     nothing leaves the phone. The full contract is in CLAUDE.md. */
+
+  var PDF_IN = true;            // false switches PDF reading off entirely
+
+  var PDF_IN_MAXPX = 2200;      // longest side a rendered page is given
+  var PDF_IN_MAXPAGES = 30;     // guard against a hundred-page document
+  var pdfInLib = null, pdfInRun = 0;
+
+  if (PDF_IN){
+    picker.setAttribute("accept", picker.getAttribute("accept") + ",application/pdf");
+
+    STR.en.pdfInWait = "Opening the PDF\u2026";
+    STR.en.pdfInPage = "Reading page {1} of {2}\u2026";
+    STR.en.pdfInFail = "Could not read that PDF. It may be protected, or hold no pages.";
+    STR.ar.pdfInWait = "جاري فتح الملف\u2026";
+    STR.ar.pdfInPage = "جاري قراءة الصفحة {1} من {2}\u2026";
+    STR.ar.pdfInFail = "تعذرت قراءة هذا الملف. قد يكون محمياً أو خالياً من الصفحات.";
+
+    /* the hint is the app's own sentence; the block only appends to it, so the
+       addition disappears with the block and nothing has to be put back */
+    STR.en.hint += " It opens PDF files too: every page arrives as its own photo.";
+    STR.ar.hint += " ويفتح ملفات PDF أيضاً، فتدخل كل صفحة كصورة مستقلة.";
+  }
+
+  function pdfInIs(f){
+    return !!f && (f.type === "application/pdf" || /\.pdf$/i.test(f.name || ""));
+  }
+
+  /* the door: files in, images out. Anything that is not a PDF passes straight
+     through untouched, so the rest of the app never learns that PDF exists. */
+  function pdfInDoor(files, done){
+    if (!PDF_IN || !files.some(pdfInIs)){ done(files); return; }
+    pdfInOpen(files, done);
+  }
+
+  function pdfInLoad(){
+    if (pdfInLib) return pdfInLib;
+    pdfInLib = new Promise(function(res, rej){
+      var s = document.createElement("script");
+      s.src = "vendor/pdf.min.js";
+      s.onload = function(){
+        var L = window.pdfjsLib;
+        if (!L){ pdfInLib = null; rej(new Error("pdf")); return; }
+        L.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker.min.js";
+        res(L);
+      };
+      s.onerror = function(){ pdfInLib = null; rej(new Error("pdf")); };
+      document.head.appendChild(s);
+    });
+    return pdfInLib;
+  }
+
+  /* one page becomes one photo. Failures are caught here and reported in both
+     languages; images picked alongside a broken PDF still go through. */
+  async function pdfInOpen(files, done){
+    var mine = ++pdfInRun, out = [], L, i;
+    setStatus("pdfInWait");
+    try { L = await pdfInLoad(); }
+    catch (e){ setStatus("pdfInFail", true); return; }
+    if (mine !== pdfInRun) return;
+
+    for (i = 0; i < files.length; i++){
+      if (mine !== pdfInRun) return;
+      if (!pdfInIs(files[i])){ out.push(files[i]); continue; }
+      try { await pdfInPages(L, files[i], out, mine); } catch (e){}
+    }
+    if (mine !== pdfInRun) return;
+    if (!out.length){ setStatus("pdfInFail", true); return; }
+    setStatus("");
+    done(out);
+  }
+
+  async function pdfInPages(L, file, out, mine){
+    var buf = await file.arrayBuffer();
+    var doc = await L.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
+    try {
+      var n = Math.min(doc.numPages, PDF_IN_MAXPAGES);
+      var base = fwClean(file.name);
+      for (var p = 1; p <= n; p++){
+        if (mine !== pdfInRun) return;
+        setStatus("pdfInPage", false, [p, n]);
+        var page = await doc.getPage(p), c = null;
+        try {
+          var v1 = page.getViewport({ scale: 1 });
+          var k = Math.min(PDF_IN_MAXPX / Math.max(v1.width, v1.height), 4);
+          var vp = page.getViewport({ scale: k });
+          c = canvasOf(Math.max(1, Math.round(vp.width)), Math.max(1, Math.round(vp.height)));
+          await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+          var b = await toBlob(c, "image/jpeg", 0.95);
+          out.push(new File([b], base + "_SHEET" + fwPad(p) + ".jpg", { type: "image/jpeg" }));
+        } finally { page.cleanup(); kill(c); }
+      }
+    } finally { await doc.destroy(); }
+  }
+  // ===== PDF IN — end =====
+
+  cmProbe();
+  webpProbe();
+  applyLang();
 })();
 </script>
 </body>
