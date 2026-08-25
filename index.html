@@ -308,6 +308,12 @@
   #loupeCv{display:block;width:100%;height:100%}
   #loupe i{position:absolute;left:50%;top:50%;width:19px;height:19px;margin:-10px 0 0 -10px;
     border:1px solid rgba(255,255,255,.9);border-radius:50%}
+  /* a cross through the middle of that ring: the ring says roughly where, the
+     cross says exactly where, and it is kept faint so it never hides the very
+     pixel it is pointing at */
+  #loupe i::before, #loupe i::after{content:"";position:absolute;background:#FFFFFF;opacity:.65}
+  #loupe i::before{left:50%;top:1px;bottom:1px;width:1px;margin-left:-.5px}
+  #loupe i::after{top:50%;left:1px;right:1px;height:1px;margin-top:-.5px}
 
   .cropBar{margin-top:14px}
   .ratios{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:9px}
@@ -370,7 +376,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.17.1</span>
+      <span class="ver">v1.18</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -568,6 +574,9 @@
   var FIT_FLOOR = 0.60, FIT_QS = [0.90, 0.75, 0.60, 0.45, 0.30], FIT_WS = [900, 700, 500, 350];
   var fitKB = 0, fitPicks = [], fitTimer = null;
   var sourceFiles = [], edits = [], results = [], urls = [], token = 0, busy = false;
+  /* the four points of every photo, kept whether or not Custom is the crop in
+     force, so a trip through Normal and back finds them where they were left */
+  var quads = [];
   /* sharpAll drives every photo; sharps[i] is null until that photo is set
      on its own in the viewer, after which it stops following sharpAll */
   var sharpAll = 0, sharps = [], stubEls = [], sharpToken = 0;
@@ -1040,6 +1049,7 @@
     sourceFiles = files;
     fwReserve(sourceFiles);
     edits = sourceFiles.map(function(){ return null; });
+    quads = sourceFiles.map(function(){ return null; });
     sharps = sourceFiles.map(function(){ return null; });
     baseRatio = null; customW = null; customH = null;
     cwEl.value = ""; chEl.value = "";
@@ -1449,15 +1459,6 @@
              h: Math.max(1, Math.round(Math.max(qLen(q,0,3), qLen(q,1,2)))) };
   }
 
-  /* the shape measured in the photo's own pixels rather than in the view's. A
-     tilt zooms the view, and measuring there would hand back a fifth-again
-     upscale of the page instead of the page itself. */
-  function qSizeSrc(q, bw, bh, rot, fh, fv, free){
-    var M = qInv(bw, bh, rot, fh, fv, free), r = [], i, p;
-    for (i = 0; i < 4; i++){ p = mAt(M, q[i*2], q[i*2+1]); r.push(p.x, p.y); }
-    return qSize(r);
-  }
-
   function cropQuad(bmp, bw, bh, edit, space, bg){
     var H = qMap(edit.quad), e2, k2;
     /* four points in a line have no straightening in them: the plain rectangle
@@ -1468,7 +1469,7 @@
       return cropAndOrient(bmp, bw, bh, e2, space, bg);
     }
 
-    var sz = qSizeSrc(edit.quad, bw, bh, edit.rot || 0, edit.fh, edit.fv, edit.free || 0), ka = 1;
+    var sz = qSize(edit.quad), ka = 1;
     if (sz.w * sz.h > CANVAS_CAP) ka = Math.sqrt(CANVAS_CAP / (sz.w * sz.h));
     var ow = Math.max(1, Math.round(sz.w * ka));
     var oh = Math.max(1, Math.round(sz.h * ka));
@@ -1480,9 +1481,11 @@
     var sw = Math.max(1, Math.round(bw * ks)), sh = Math.max(1, Math.round(bh * ks));
 
     /* output pixel to source pixel in one matrix: the unit square onto the four
-       points, the view undone back to the source, and the cap folded in */
-    var M = mMul(mMul(mS(ks, ks),
-                 qInv(bw, bh, edit.rot || 0, edit.fh, edit.fv, edit.free || 0)), H);
+       points — which are already in the photo's own pixels — and the cap folded
+       in. The rotation, the flips and the tilt are not undone here and must not
+       be: they were only ever the view the points were placed through, and the
+       points themselves came out of it in the photo's own terms. */
+    var M = mMul(mS(ks, ks), H);
 
     /* only the corner of the photo those four points enclose is ever read. A
        page is rarely the whole frame, and holding the rest would cost memory
@@ -2252,7 +2255,7 @@
      other, plus a midpoint on every edge that carries the whole edge at once —
      which is what makes a page whose edge sits a little off a single drag
      instead of two. Held in display pixels, the way fx and fy are. */
-  var cQuad = null, qHold = -1, qRaf = 0;
+  var cQuad = null, qOn = false, qHold = -1, qRaf = 0;
   var quadBox = $("quad"), quadSvg = $("quadSvg"), loupe = $("loupe"), loupeCv = $("loupeCv");
   var LOUPE = 104, LZOOM = 2.6;
 
@@ -2385,6 +2388,7 @@
     srcBase.splice(idx, 1);
     outBase.splice(idx, 1);
     edits.splice(idx, 1);
+    quads.splice(idx, 1);
     sharps.splice(idx, 1);
     stubEls.splice(idx, 1);
     fitPicks.splice(idx, 1);
@@ -2428,15 +2432,12 @@
       fw = e.sw * viewK; fh = e.sh * viewK;
     } else resetFrame();
     layoutFrame();
-    /* the four points come back exactly where they were left, in this photo's
-       own pixels; a shape that no longer holds up is dropped rather than shown */
-    cQuad = null;
-    if (e && e.quad){
-      var q = [], i;
-      for (i = 0; i < 8; i++) q.push(e.quad[i] * viewK);
-      if (quadOK(q)) cQuad = q;
-    }
-    quadOn(!!cQuad);
+    /* the four points come back from this photo's own memory, whichever crop
+       was applied last: Custom is shown again only if Custom is what applies,
+       but the shape is there either way, waiting behind Normal */
+    cQuad = quads[idx] ? quads[idx].slice(0) : null;
+    if (cQuad && !quadOK(cQuad)) cQuad = null;
+    quadOn(!!(cQuad && e && e.quad));
     lockPage();
     cropper.classList.remove("hidden");
   }
@@ -2471,7 +2472,11 @@
        that comes out of the pipeline cannot drift apart. */
     var m = qFwd(bw0, bh0, cRot, cFH, cFV, cFree), kx = pw / oW, ky = ph / oH;
     x.setTransform(kx*m[0], ky*m[3], kx*m[1], ky*m[4], kx*m[2], ky*m[5]);
-    x.drawImage(cBmp, 0, 0);
+    /* the size is stated rather than left to the browser: a photo carrying an
+       orientation tag can be handed over with its sides the other way round to
+       the ones measured here, and then it lands in a corner of its own frame
+       at the wrong size — which is exactly what a large iPhone photo did */
+    x.drawImage(cBmp, 0, 0, bw0, bh0);
     x.setTransform(1, 0, 0, 1, 0, 0);
   }
 
@@ -2497,8 +2502,29 @@
     cropSize.textContent = Math.round(fw / viewK) + " \u00D7 " + Math.round(fh / viewK);
   }
 
+  /* The four points are held in the photo's own pixels, never in the pixels of
+     the view they happened to be placed through. That is what keeps a tilt from
+     dragging them off the page: rotating, flipping or tilting changes how the
+     photo is shown, and the points come along for free, because they were never
+     described in terms of the view to begin with. */
+  function quadView(){
+    var M = qFwd(bw0, bh0, cRot, cFH, cFV, cFree), q = [], i, p;
+    for (i = 0; i < 4; i++){
+      p = mAt(M, cQuad[i*2], cQuad[i*2+1]);
+      q.push(p.x * viewK, p.y * viewK);
+    }
+    return q;
+  }
+
+  /* and the other way, for a finger that is pointing at the view */
+  function quadAt(x, y){
+    return mAt(qInv(bw0, bh0, cRot, cFH, cFV, cFree), x / viewK, y / viewK);
+  }
+
   function quadFromFrame(){
-    return [fx, fy, fx + fw, fy, fx + fw, fy + fh, fx, fy + fh];
+    var c = [[fx, fy], [fx + fw, fy], [fx + fw, fy + fh], [fx, fy + fh]], q = [], i, p;
+    for (i = 0; i < 4; i++){ p = quadAt(c[i][0], c[i][1]); q.push(p.x, p.y); }
+    return q;
   }
 
   /* handles 0-3 are the corners; 4-7 sit on the middle of each edge */
@@ -2520,7 +2546,10 @@
       if (!sgn) sgn = cr > 0 ? 1 : -1;
       else if ((cr > 0 ? 1 : -1) !== sgn) return false;
     }
-    for (i = 0; i < 4; i++) if (qLen(q, i, (i+1)%4) < 30) return false;
+    /* the shortest edge is judged by what it measures on the glass, since that
+       is where the fingers are, not by what it measures in the photo */
+    var min = 30 / (viewK || 1);
+    for (i = 0; i < 4; i++) if (qLen(q, i, (i+1)%4) < min) return false;
     return true;
   }
 
@@ -2544,25 +2573,17 @@
     return best;
   }
 
-  /* the same shape in the photo's own pixels, which is what is stored and what
-     the pipeline is handed */
-  function quadSrc(){
-    var q = [], i;
-    for (i = 0; i < 8; i++) q.push(cQuad[i] / viewK);
-    return q;
-  }
-
   function nn(v){ return v.toFixed(1); }
 
   function layoutQuad(){
-    var g = quadBox.querySelectorAll(".qg"), i, p;
+    var dq = quadView(), g = quadBox.querySelectorAll(".qg"), i, p;
     for (i = 0; i < 8; i++){
-      p = quadPoint(cQuad, i);
+      p = quadPoint(dq, i);
       g[i].style.left = nn(p.x) + "px";
       g[i].style.top = nn(p.y) + "px";
     }
-    var d = "M" + nn(cQuad[0]) + "," + nn(cQuad[1]) + "L" + nn(cQuad[2]) + "," + nn(cQuad[3]) +
-            "L" + nn(cQuad[4]) + "," + nn(cQuad[5]) + "L" + nn(cQuad[6]) + "," + nn(cQuad[7]) + "Z";
+    var d = "M" + nn(dq[0]) + "," + nn(dq[1]) + "L" + nn(dq[2]) + "," + nn(dq[3]) +
+            "L" + nn(dq[4]) + "," + nn(dq[5]) + "L" + nn(dq[6]) + "," + nn(dq[7]) + "Z";
     quadSvg.setAttribute("viewBox", "0 0 " + dispW + " " + dispH);
     /* the outer rectangle and the shape as one path: the even-odd rule then
        darkens everything the crop is about to throw away */
@@ -2570,7 +2591,7 @@
     $("quadLine").setAttribute("d", d);
     /* the same thirds the rectangle draws, carried through the same mapping, so
        the lines lie along the page instead of across it */
-    var H = qMap(cQuad), grid = "", u, a, b, c, e;
+    var H = qMap(dq), grid = "", u, a, b, c, e;
     if (H) for (i = 1; i < 3; i++){
       u = i / 3;
       a = mAt(H, u, 0); b = mAt(H, u, 1); c = mAt(H, 0, u); e = mAt(H, 1, u);
@@ -2578,14 +2599,20 @@
               "M" + nn(c.x) + "," + nn(c.y) + "L" + nn(e.x) + "," + nn(e.y);
     }
     $("quadGrid").setAttribute("d", grid);
-    /* what the straightened photo will measure, not what the shape spans */
-    var sz = qSizeSrc(quadSrc(), bw0, bh0, cRot, cFH, cFV, cFree);
+    /* what the straightened photo will measure. The shape is already in the
+       photo's own pixels, so this is simply its own size — a tilt zooms the
+       view but cannot inflate the figure. */
+    var sz = qSize(cQuad);
     cropSize.textContent = sz.w + " \u00D7 " + sz.h;
   }
 
+  /* Custom keeps its four points while Normal is in front. Switching between
+     the two is a change of which crop applies, not an instruction to throw away
+     a shape that was placed by hand; only Reset does that. */
   function quadOn(on){
     if (on && !cQuad) cQuad = quadFromFrame();
-    if (!on){ cQuad = null; loupeHide(); }
+    if (!on) loupeHide();
+    qOn = on;
     quadBox.classList.toggle("hidden", !on);
     frame.classList.toggle("hidden", on);
     $("shade").classList.toggle("hidden", on);
@@ -2594,25 +2621,6 @@
     $("modeQuad").setAttribute("aria-pressed", on ? "true" : "false");
     $("modeRect").setAttribute("aria-pressed", on ? "false" : "true");
     if (on) layoutQuad(); else layoutFrame();
-  }
-
-  /* rotate, flip and tilt all move the photo out from under the points, so the
-     points are carried with it and the same corner of the page stays under the
-     same handle. Where a point would land off the photo — which only a tilt can
-     do, since it zooms the view — the move is left alone rather than dragged
-     halfway and bent out of shape. */
-  function quadCarry(rot0, fh0, fv0, free0, k0){
-    if (!cQuad) return;
-    var M = mMul(qFwd(bw0, bh0, cRot, cFH, cFV, cFree),
-                 qInv(bw0, bh0, rot0, fh0, fv0, free0));
-    var q = [], i, p;
-    for (i = 0; i < 4; i++){
-      p = mAt(M, cQuad[i*2] / k0, cQuad[i*2+1] / k0);
-      if (p.x < -1 || p.x > oW + 1 || p.y < -1 || p.y > oH + 1) return;
-      q.push(Math.max(0, Math.min(dispW, p.x * viewK)),
-             Math.max(0, Math.min(dispH, p.y * viewK)));
-    }
-    if (quadOK(q)) cQuad = q;
   }
 
   function loupeHide(){
@@ -2630,7 +2638,7 @@
 
   function loupeDraw(){
     if (qHold < 0 || !cQuad || !cBmp) return;
-    var p = quadPoint(cQuad, qHold);
+    var p = quadPoint(quadView(), qHold);
     var dpr = Math.min(window.devicePixelRatio || 1, 3);
     var L = Math.max(1, Math.round(LOUPE * dpr));
     if (loupeCv.width !== L){ loupeCv.width = L; loupeCv.height = L; }
@@ -2645,7 +2653,7 @@
     var m = mMul(mMul(mMul(mT(L/2, L/2), mS(k, k)), mT(-p.x / viewK, -p.y / viewK)),
                  qFwd(bw0, bh0, cRot, cFH, cFV, cFree));
     x.setTransform(m[0], m[3], m[1], m[4], m[2], m[5]);
-    x.drawImage(cBmp, 0, 0);
+    x.drawImage(cBmp, 0, 0, bw0, bh0);
     x.setTransform(1, 0, 0, 1, 0, 0);
     /* it rides above the finger, and drops below it near the top edge */
     var lx = Math.max(0, Math.min(dispW - LOUPE, p.x - LOUPE / 2));
@@ -2670,51 +2678,41 @@
     });
   });
 
+  /* the points sit in the photo, so turning or flipping it simply shows them
+     somewhere else on the glass — there is nothing to move and nothing to lose */
   $("rotBtn").addEventListener("click", function(){
-    var r0 = cRot, k0 = viewK;
     cRot = (cRot + 90) % 360;
     paintEditor(); resetFrame();
-    quadCarry(r0, cFH, cFV, cFree, k0);
-    layoutFrame(); if (cQuad) layoutQuad();
+    layoutFrame(); if (qOn) layoutQuad();
   });
   $("flipH").addEventListener("click", function(){
-    var f0 = cFH, k0 = viewK;
     cFH = !cFH;
     this.setAttribute("aria-pressed", cFH ? "true" : "false");
     paintEditor();
-    quadCarry(cRot, f0, cFV, cFree, k0);
-    layoutFrame(); if (cQuad) layoutQuad();
+    layoutFrame(); if (qOn) layoutQuad();
   });
   $("flipV").addEventListener("click", function(){
-    var f0 = cFV, k0 = viewK;
     cFV = !cFV;
     this.setAttribute("aria-pressed", cFV ? "true" : "false");
     paintEditor();
-    quadCarry(cRot, cFH, f0, cFree, k0);
-    layoutFrame(); if (cQuad) layoutQuad();
+    layoutFrame(); if (qOn) layoutQuad();
   });
 
-  /* pressing the one that is already pressed does nothing, so a stray tap on
-     Custom cannot throw away four points that were carefully placed */
-  $("modeRect").addEventListener("click", function(){ if (cQuad) quadOn(false); });
-  $("modeQuad").addEventListener("click", function(){ if (!cQuad) quadOn(true); });
+  $("modeRect").addEventListener("click", function(){ if (qOn) quadOn(false); });
+  $("modeQuad").addEventListener("click", function(){ if (!qOn) quadOn(true); });
 
   $("tilt").addEventListener("input", function(){
-    var v0 = cFree, k0 = viewK;
     cFree = parseFloat(this.value) || 0;
     paintEditor();
-    quadCarry(cRot, cFH, cFV, v0, k0);
-    layoutFrame(); if (cQuad) layoutQuad();
+    layoutFrame(); if (qOn) layoutQuad();
   });
 
   /* levels the tilt alone; Reset clears everything else too */
   $("tiltZero").addEventListener("click", function(){
     if (!cFree) return;
-    var v0 = cFree, k0 = viewK;
     cFree = 0; $("tilt").value = 0;
     paintEditor();
-    quadCarry(cRot, cFH, cFV, v0, k0);
-    layoutFrame(); if (cQuad) layoutQuad();
+    layoutFrame(); if (qOn) layoutQuad();
   });
 
   $("cropReset").addEventListener("click", function(){
@@ -2723,6 +2721,8 @@
     $("flipV").setAttribute("aria-pressed", "false");
     $("tilt").value = 0;
     setRatioButtons(0);
+    /* Reset means all of it, the four points included */
+    cQuad = null;
     quadOn(false);
     paintEditor(); resetFrame(); layoutFrame();
   });
@@ -2803,18 +2803,21 @@
       if (!cQuad) return;
       e.preventDefault(); e.stopPropagation();
       var n = parseInt(g.getAttribute("data-q"), 10);
-      var p0 = pt(e), q0 = cQuad.slice(0);
+      var p0 = pt(e), s0 = quadAt(p0.x, p0.y), q0 = cQuad.slice(0);
       var mv = n < 4 ? [n] : [n - 4, (n - 3) % 4];
       qHold = n;
       g.classList.add("held");
       loupeTick();
       attach(function(ev){
         ev.preventDefault();
-        var p = pt(ev), dx = p.x - p0.x, dy = p.y - p0.y, q = q0.slice(0), i, j;
+        /* the finger's travel is turned into travel across the photo, so a
+           tilted or turned view moves the point the way the eye expects */
+        var p = pt(ev), sp = quadAt(p.x, p.y), q = q0.slice(0), i, j;
+        var dx = sp.x - s0.x, dy = sp.y - s0.y;
         for (i = 0; i < mv.length; i++){
           j = mv[i] * 2;
-          q[j]   = Math.max(0, Math.min(dispW, q0[j] + dx));
-          q[j+1] = Math.max(0, Math.min(dispH, q0[j+1] + dy));
+          q[j]   = Math.max(0, Math.min(bw0, q0[j] + dx));
+          q[j+1] = Math.max(0, Math.min(bh0, q0[j+1] + dy));
         }
         if (!quadOK(q)) q = quadSlide(q0, q, mv);
         if (q){ cQuad = q; layoutQuad(); }
@@ -2847,14 +2850,18 @@
     sh = Math.max(1, Math.min(sh, oH - sy));
 
     var whole = (sx === 0 && sy === 0 && sw === oW && sh === oH);
-    if (cQuad){
-      var q = quadSrc(), i;
+    /* the shape is remembered for this photo whichever crop was applied, so
+       coming back to Custom later finds it exactly where it was left */
+    quads[cropIdx] = cQuad ? cQuad.slice(0) : null;
+    if (qOn && cQuad){
+      var q = cQuad.slice(0), dq = quadView(), i;
       for (i = 0; i < 8; i++) q[i] = Math.round(q[i] * 10) / 10;
-      /* the box around the four points is stored with them: it is what the
-         plain rectangle falls back to if the points are switched off again */
-      var qx = Math.min(q[0], q[2], q[4], q[6]), qy = Math.min(q[1], q[3], q[5], q[7]);
-      var qw = Math.max(q[0], q[2], q[4], q[6]) - qx;
-      var qh = Math.max(q[1], q[3], q[5], q[7]) - qy;
+      /* the box around the four points, in the upright view the rectangle
+         speaks: it is what that rectangle falls back to if Normal is chosen */
+      for (i = 0; i < 8; i++) dq[i] = dq[i] / viewK;
+      var qx = Math.min(dq[0], dq[2], dq[4], dq[6]), qy = Math.min(dq[1], dq[3], dq[5], dq[7]);
+      var qw = Math.max(dq[0], dq[2], dq[4], dq[6]) - qx;
+      var qh = Math.max(dq[1], dq[3], dq[5], dq[7]) - qy;
       edits[cropIdx] = { sx: Math.max(0, Math.round(qx)), sy: Math.max(0, Math.round(qy)),
         sw: Math.max(1, Math.round(qw)), sh: Math.max(1, Math.round(qh)),
         rot: cRot, fh: cFH, fv: cFV, free: cFree, ratio: 0, quad: q };
