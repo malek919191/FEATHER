@@ -123,6 +123,14 @@ v2.7  →  cosmetic tweak       →  v2.7.1
       →  structural rebuild   →  v3.0
 ```
 
+**The number is confirmed with the user before it ships.** The table above decides most cases on its own. But the awkward ones — a repair that changes behaviour, a correction to a version that has only just shipped, a batch that mixes a fix with a cosmetic tweak — are exactly the ones where a wrong number is easy to justify to oneself and wrong to the user. So before any commit that carries a version, say three things and wait for the answer:
+
+1. **The version the app is on right now** — the last number reached before this change.
+2. **The number this change would make it.**
+3. **Why that is the right step**, by the table above.
+
+Naming the current one is what makes the step checkable: nobody can judge a jump without seeing where it started from. And a number already committed is never rewritten, because history here is added to and never re-authored — so a wrong one costs a second commit and a second deploy, and asking first is cheaper than both.
+
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
 The current version in `index.html` is **`v1.18`**.
