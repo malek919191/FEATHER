@@ -298,6 +298,11 @@
   #quad .qg::after{content:"";position:absolute;left:8px;top:8px;width:16px;height:16px;
     border:2.5px solid #FFFFFF;border-radius:50%;background:rgba(10,16,22,.5)}
   #quad .qg.mid::after{left:11px;top:11px;width:10px;height:10px;border-width:2px}
+  /* while the edges can bend, the middle handles are doing a different job from
+     the one they do among straight edges, and they say so: a wider ring with
+     nothing filling it, because it is a pull rather than a corner */
+  #quad.bend .qg.mid::after{left:9px;top:9px;width:14px;height:14px;
+    border-width:2px;background:transparent}
   #quad .qg.held::after{background:#FFFFFF}
 
   /* the finger covers the very corner it is trying to land on, so whatever is
@@ -325,7 +330,7 @@
   .tools{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:9px}
   /* which shape the crop has, as a choice rather than a switch: the pressed one
      says where you are, and the other says where else you can go */
-  .modes{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:9px}
+  .modes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:9px}
   /* these two are words, not ratios, and Arabic letters have to join up in them,
      so they take the face the rest of the choice rows use rather than the
      monospace one that suits 16:9 */
@@ -531,6 +536,7 @@
     <div class="modes">
       <button class="ratio" id="modeRect" aria-pressed="true" data-t="mRect">Normal</button>
       <button class="ratio" id="modeQuad" aria-pressed="false" data-t="mQuad">Custom</button>
+      <button class="ratio" id="modeBend" aria-pressed="false" data-t="mBend">Curve</button>
     </div>
     <div class="ratios" id="ratios">
       <button class="ratio" data-r="0" aria-pressed="true" data-t="rFree">Free</button>
@@ -575,8 +581,9 @@
   var fitKB = 0, fitPicks = [], fitTimer = null;
   var sourceFiles = [], edits = [], results = [], urls = [], token = 0, busy = false;
   /* the four points of every photo, kept whether or not Custom is the crop in
-     force, so a trip through Normal and back finds them where they were left */
-  var quads = [];
+     force, so a trip through Normal and back finds them where they were left,
+     and beside them the bend of its four edges, kept the same way */
+  var quads = [], warps = [];
   /* sharpAll drives every photo; sharps[i] is null until that photo is set
      on its own in the viewer, after which it stops following sharpAll */
   var sharpAll = 0, sharps = [], stubEls = [], sharpToken = 0;
@@ -622,7 +629,7 @@
       tOrig:"Original", tComp:"Compressed",
       vSharp:"Sharpness \u2014 This Photo", bClose:"Close",
       rFree:"Free", bRotate:"Rotate 90\u00B0", bFlipH:"Flip H", bFlipV:"Flip V",
-      mRect:"Normal", mQuad:"Custom",
+      mRect:"Normal", mQuad:"Custom", mBend:"Curve",
       aTilt:"Tilt", aLevel:"Level",
       bApply:"Apply", bCancel:"Cancel", bReset:"Reset",
       hint:"Nothing leaves your phone. Tap the corner icon to crop, rotate, or flip. " +
@@ -656,7 +663,7 @@
       tOrig:"الأصلية", tComp:"المضغوطة",
       vSharp:"الحدة \u2014 لهذه الصورة", bClose:"إغلاق",
       rFree:"حر", bRotate:"تدوير 90\u00B0", bFlipH:"قلب أفقي", bFlipV:"قلب رأسي",
-      mRect:"عادي", mQuad:"محدد",
+      mRect:"عادي", mQuad:"محدد", mBend:"منحني",
       aTilt:"ميلان", aLevel:"تسوية",
       bApply:"تطبيق", bCancel:"إلغاء", bReset:"إعادة ضبط",
       hint:"لا شيء يغادر هاتفك. اضغط الأيقونة في زاوية الصورة للقص أو التدوير أو القلب. " +
@@ -1050,6 +1057,7 @@
     fwReserve(sourceFiles);
     edits = sourceFiles.map(function(){ return null; });
     quads = sourceFiles.map(function(){ return null; });
+    warps = sourceFiles.map(function(){ return null; });
     sharps = sourceFiles.map(function(){ return null; });
     baseRatio = null; customW = null; customH = null;
     cwEl.value = ""; chEl.value = "";
@@ -1448,6 +1456,83 @@
             g,           h,          1];
   }
 
+  /* the inverse of a 3x3, by its adjugate. It is what turns a finger on the
+     glass back into a place inside the unit square, which is where a bend is
+     described. */
+  function mInv(m){
+    var c = [
+      m[4]*m[8]-m[5]*m[7], m[2]*m[7]-m[1]*m[8], m[1]*m[5]-m[2]*m[4],
+      m[5]*m[6]-m[3]*m[8], m[0]*m[8]-m[2]*m[6], m[2]*m[3]-m[0]*m[5],
+      m[3]*m[7]-m[4]*m[6], m[1]*m[6]-m[0]*m[7], m[0]*m[4]-m[1]*m[3]
+    ];
+    var d = m[0]*c[0] + m[1]*c[3] + m[2]*c[6], i;
+    if (!d) return null;
+    for (i = 0; i < 9; i++) c[i] /= d;
+    return c;
+  }
+
+  /* ---- the bend ----------------------------------------------------------
+     A page out of a bound book is not flat: near the spine it curves, and the
+     lines of text bow with it. Four straight edges cannot describe that, and
+     no amount of pulling the corners will.
+
+     The bend is a displacement inside the unit square, applied BEFORE the
+     perspective and never instead of it. That order is the whole design. The
+     obvious construction — filling a shape bounded by four curves directly —
+     spreads the inside evenly, which throws away the foreshortening the
+     perspective just worked out: the far edge of the page would be walked at
+     the same rate as the near one. Applied first, the bend leaves the
+     perspective to do its own job afterwards, and every control at rest gives
+     the square back untouched, so a straight-edged crop stays exactly the crop
+     it was before any of this existed.
+
+     W holds the four controls, one per edge — top, right, bottom, left — as
+     offsets from the middle of that edge. Each edge is then the quadratic
+     curve through its two corners and its own control, and the corners
+     themselves never move. */
+  function qBend(W, u, v){
+    var au = 2*u*(1-u), av = 2*v*(1-v);
+    return { u: u + au*((1-v)*W[0] + v*W[4]) + av*((1-u)*W[6] + u*W[2]),
+             v: v + au*((1-v)*W[1] + v*W[5]) + av*((1-u)*W[7] + u*W[3]) };
+  }
+
+  /* a bend pushed far enough folds the map onto itself, and a folded map has no
+     straightening in it — the same objection a crossed-over quadrilateral gets.
+     The determinant of the Jacobian turning negative anywhere is exactly that
+     fold, so it is sampled over the square and refused. The limit sits far past
+     anything a page asks for: a page needs about a fifth, and folding does not
+     begin until a whole one. */
+  function qBendOK(W){
+    var i, j, u, v, au, av, pu, pv, ux, uy, vx, vy;
+    for (i = 0; i <= 8; i++) for (j = 0; j <= 8; j++){
+      u = i / 8; v = j / 8;
+      au = 2*u*(1-u); av = 2*v*(1-v); pu = 2 - 4*u; pv = 2 - 4*v;
+      ux = 1 + pu*((1-v)*W[0] + v*W[4]) + av*(W[2] - W[6]);
+      uy =     pu*((1-v)*W[1] + v*W[5]) + av*(W[3] - W[7]);
+      vx =     au*(W[4] - W[0]) + pv*((1-u)*W[6] + u*W[2]);
+      vy = 1 + au*(W[5] - W[1]) + pv*((1-u)*W[7] + u*W[3]);
+      if (ux*vy - uy*vx < 0.08) return false;
+    }
+    return true;
+  }
+
+  function qBent(W){
+    if (!W) return false;
+    for (var i = 0; i < 8; i++) if (W[i]) return true;
+    return false;
+  }
+
+  /* the four edges of the unit square, each as a start and an end */
+  var Q_EDGE = [[0,0, 1,0], [1,0, 1,1], [0,1, 1,1], [0,0, 0,1]];
+
+  /* a point on one edge of the bent square, in whatever space m maps to */
+  function qEdgeAt(m, W, e, t){
+    var g = Q_EDGE[e];
+    var u = g[0] + (g[2] - g[0]) * t, v = g[1] + (g[3] - g[1]) * t;
+    var b = W ? qBend(W, u, v) : { u: u, v: v };
+    return mAt(m, b.u, b.v);
+  }
+
   function qLen(q, a, b){
     var dx = q[b*2] - q[a*2], dy = q[b*2+1] - q[a*2+1];
     return Math.sqrt(dx*dx + dy*dy);
@@ -1457,6 +1542,31 @@
   function qSize(q){
     return { w: Math.max(1, Math.round(Math.max(qLen(q,0,1), qLen(q,3,2)))),
              h: Math.max(1, Math.round(Math.max(qLen(q,0,3), qLen(q,1,2)))) };
+  }
+
+  /* A bent edge is longer than the straight line between its corners, and the
+     straightened page has to be given room for the whole of it — so the size
+     comes from walking the four boundary curves rather than measuring across
+     them. With no bend the walk is skipped entirely, so a straight crop is
+     measured exactly the way it always was, down to the last pixel. */
+  function qSizeBend(q, W){
+    if (!qBent(W)) return qSize(q);
+    var H = qMap(q);
+    if (!H) return qSize(q);
+    var N = 16, len = [0, 0, 0, 0], e, i, p, prev, dx, dy;
+    for (e = 0; e < 4; e++){
+      prev = null;
+      for (i = 0; i <= N; i++){
+        p = qEdgeAt(H, W, e, i / N);
+        if (prev){
+          dx = p.x - prev.x; dy = p.y - prev.y;
+          len[e] += Math.sqrt(dx*dx + dy*dy);
+        }
+        prev = p;
+      }
+    }
+    return { w: Math.max(1, Math.round(Math.max(len[0], len[2]))),
+             h: Math.max(1, Math.round(Math.max(len[1], len[3]))) };
   }
 
   function cropQuad(bmp, bw, bh, edit, space, bg){
@@ -1469,7 +1579,8 @@
       return cropAndOrient(bmp, bw, bh, e2, space, bg);
     }
 
-    var sz = qSize(edit.quad), ka = 1;
+    var W = qBent(edit.warp) ? edit.warp : null;
+    var sz = qSizeBend(edit.quad, W), ka = 1;
     if (sz.w * sz.h > CANVAS_CAP) ka = Math.sqrt(CANVAS_CAP / (sz.w * sz.h));
     var ow = Math.max(1, Math.round(sz.w * ka));
     var oh = Math.max(1, Math.round(sz.h * ka));
@@ -1491,11 +1602,25 @@
        page is rarely the whole frame, and holding the rest would cost memory
        for pixels no output pixel asks about. A straight line stays straight
        under this mapping, so the four corners bound the whole of it. */
-    var c0 = mAt(M, 0, 0), c1 = mAt(M, 1, 0), c2 = mAt(M, 1, 1), c3 = mAt(M, 0, 1);
-    var bx = Math.max(0, Math.floor(Math.min(c0.x, c1.x, c2.x, c3.x)) - 1);
-    var by = Math.max(0, Math.floor(Math.min(c0.y, c1.y, c2.y, c3.y)) - 1);
-    var rw = Math.max(1, Math.min(sw, Math.ceil(Math.max(c0.x, c1.x, c2.x, c3.x)) + 1) - bx);
-    var rh = Math.max(1, Math.min(sh, Math.ceil(Math.max(c0.y, c1.y, c2.y, c3.y)) + 1) - by);
+    var lo = { x: Infinity, y: Infinity }, hi = { x: -Infinity, y: -Infinity }, ci, ce, cp;
+    if (W){
+      /* a bent edge bulges past the corners, so the boundary is walked */
+      for (ce = 0; ce < 4; ce++) for (ci = 0; ci <= 16; ci++){
+        cp = qEdgeAt(M, W, ce, ci / 16);
+        if (cp.x < lo.x) lo.x = cp.x;
+        if (cp.y < lo.y) lo.y = cp.y;
+        if (cp.x > hi.x) hi.x = cp.x;
+        if (cp.y > hi.y) hi.y = cp.y;
+      }
+    } else {
+      var c0 = mAt(M, 0, 0), c1 = mAt(M, 1, 0), c2 = mAt(M, 1, 1), c3 = mAt(M, 0, 1);
+      lo.x = Math.min(c0.x, c1.x, c2.x, c3.x); lo.y = Math.min(c0.y, c1.y, c2.y, c3.y);
+      hi.x = Math.max(c0.x, c1.x, c2.x, c3.x); hi.y = Math.max(c0.y, c1.y, c2.y, c3.y);
+    }
+    var bx = Math.max(0, Math.floor(lo.x) - 1);
+    var by = Math.max(0, Math.floor(lo.y) - 1);
+    var rw = Math.max(1, Math.min(sw, Math.ceil(hi.x) + 1) - bx);
+    var rh = Math.max(1, Math.min(sh, Math.ceil(hi.y) + 1) - by);
     M = mMul(mT(-bx, -by), M);
 
     var srcCv = canvasOf(rw, rh, space, bg);
@@ -1509,17 +1634,29 @@
     var s = sd.data, d = od.data;
     var n0=M[0], n1=M[1], n2=M[2], n3=M[3], n4=M[4], n5=M[5], n6=M[6], n7=M[7], n8=M[8];
     var xm = rw - 1, ym = rh - 1, i = 0, x, y, u, v, w, uu, vv;
+    var au, av = 0, wu = 0, wv = 0, pu, pv;
     var xa, ya, xb, yb, gx, gy, pa, pb, pc, pd, w00, w10, w01, w11, a0, a1, a2, a3, aa, f;
 
     for (y = 0; y < oh; y++){
       vv = (y + 0.5) / oh;
+      /* the part of the bend that only depends on the row is worked out once */
+      if (W){
+        av = 2*vv*(1-vv);
+        wu = (1-vv)*W[0] + vv*W[4];
+        wv = (1-vv)*W[1] + vv*W[5];
+      }
       for (x = 0; x < ow; x++){
         uu = (x + 0.5) / ow;
-        w = n6*uu + n7*vv + n8;
+        if (W){
+          au = 2*uu*(1-uu);
+          pu = uu + au*wu + av*((1-uu)*W[6] + uu*W[2]);
+          pv = vv + au*wv + av*((1-uu)*W[7] + uu*W[3]);
+        } else { pu = uu; pv = vv; }
+        w = n6*pu + n7*pv + n8;
         /* the half pixel comes back off: a source pixel is a square, and its
            colour belongs at its centre, not at its top-left corner */
-        u = (n0*uu + n1*vv + n2) / w - 0.5;
-        v = (n3*uu + n4*vv + n5) / w - 0.5;
+        u = (n0*pu + n1*pv + n2) / w - 0.5;
+        v = (n3*pu + n4*pv + n5) / w - 0.5;
         if (u < 0) u = 0; else if (u > xm) u = xm;
         if (v < 0) v = 0; else if (v > ym) v = ym;
         xa = u | 0; ya = v | 0;
@@ -2255,7 +2392,7 @@
      other, plus a midpoint on every edge that carries the whole edge at once —
      which is what makes a page whose edge sits a little off a single drag
      instead of two. Held in display pixels, the way fx and fy are. */
-  var cQuad = null, qOn = false, qHold = -1, qRaf = 0;
+  var cQuad = null, qOn = false, qCurve = false, cWarp = null, qHold = -1, qRaf = 0;
   var quadBox = $("quad"), quadSvg = $("quadSvg"), loupe = $("loupe"), loupeCv = $("loupeCv");
   var LOUPE = 104, LZOOM = 2.6;
 
@@ -2389,6 +2526,7 @@
     outBase.splice(idx, 1);
     edits.splice(idx, 1);
     quads.splice(idx, 1);
+    warps.splice(idx, 1);
     sharps.splice(idx, 1);
     stubEls.splice(idx, 1);
     fitPicks.splice(idx, 1);
@@ -2432,12 +2570,15 @@
       fw = e.sw * viewK; fh = e.sh * viewK;
     } else resetFrame();
     layoutFrame();
-    /* the four points come back from this photo's own memory, whichever crop
-       was applied last: Custom is shown again only if Custom is what applies,
-       but the shape is there either way, waiting behind Normal */
+    /* the four points and the bend of their edges come back from this photo's
+       own memory, whichever crop was applied last: the shape is shown again
+       only if it is the shape that applies, but it is there either way, waiting
+       behind whatever else is in front */
     cQuad = quads[idx] ? quads[idx].slice(0) : null;
     if (cQuad && !quadOK(cQuad)) cQuad = null;
-    quadOn(!!(cQuad && e && e.quad));
+    cWarp = warps[idx] ? warps[idx].slice(0) : null;
+    if (cWarp && !qBendOK(cWarp)) cWarp = null;
+    quadOn(!!(cQuad && e && e.quad), !!(e && qBent(e.warp)));
     lockPage();
     cropper.classList.remove("hidden");
   }
@@ -2527,9 +2668,16 @@
     return q;
   }
 
-  /* handles 0-3 are the corners; 4-7 sit on the middle of each edge */
+  /* handles 0-3 are the corners; 4-7 sit on the middle of each edge. Among
+     straight edges that middle is simply halfway between two corners, which is
+     the point the whole edge travels with. Once the edge can bend it is instead
+     the top of the curve, so the handle stays on the edge it is bending. */
   function quadPoint(q, n){
     if (n < 4) return { x: q[n*2], y: q[n*2+1] };
+    if (qCurve && cWarp){
+      var m = qMap(q);
+      if (m) return qEdgeAt(m, cWarp, n - 4, 0.5);
+    }
     var a = (n - 4) * 2, b = ((n - 3) % 4) * 2;
     return { x: (q[a] + q[b]) / 2, y: (q[a+1] + q[b+1]) / 2 };
   }
@@ -2551,6 +2699,23 @@
     var min = 30 / (viewK || 1);
     for (i = 0; i < 4; i++) if (qLen(q, i, (i+1)%4) < min) return false;
     return true;
+  }
+
+  var Q_MID = [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]];
+
+  /* a bend pushed past folding is walked back the same way a corner is: to the
+     furthest pull it can still hold, so the handle slides against the limit
+     rather than stopping dead under a finger that is still moving */
+  function bendSlide(w0, w1, k){
+    var lo = 0, hi = 1, best = null, w, t, i;
+    for (i = 0; i < 12; i++){
+      t = (lo + hi) / 2;
+      w = w0.slice(0);
+      w[k*2]     = w0[k*2]     + (w1[k*2]     - w0[k*2])     * t;
+      w[k*2 + 1] = w0[k*2 + 1] + (w1[k*2 + 1] - w0[k*2 + 1]) * t;
+      if (qBendOK(w)){ best = w; lo = t; } else hi = t;
+    }
+    return best;
   }
 
   /* A point dragged too far would fold the shape, and refusing the whole move
@@ -2582,44 +2747,73 @@
       g[i].style.left = nn(p.x) + "px";
       g[i].style.top = nn(p.y) + "px";
     }
-    var d = "M" + nn(dq[0]) + "," + nn(dq[1]) + "L" + nn(dq[2]) + "," + nn(dq[3]) +
-            "L" + nn(dq[4]) + "," + nn(dq[5]) + "L" + nn(dq[6]) + "," + nn(dq[7]) + "Z";
+    /* the outline is walked rather than joined corner to corner, so one piece
+       of drawing serves a straight shape and a bent one alike: with no bend the
+       walk lands on the straight line anyway */
+    var Hd = qMap(dq), W = (qCurve && qBent(cWarp)) ? cWarp : null;
+    var d = "";
+    if (Hd){
+      var walk = [[0, 0, 1], [1, 0, 1], [2, 1, 0], [3, 1, 0]], wk, ti, tt, pp;
+      for (wk = 0; wk < 4; wk++){
+        for (ti = 0; ti <= 12; ti++){
+          tt = walk[wk][1] + (walk[wk][2] - walk[wk][1]) * (ti / 12);
+          pp = qEdgeAt(Hd, W, walk[wk][0], tt);
+          d += (d ? "L" : "M") + nn(pp.x) + "," + nn(pp.y);
+        }
+      }
+      d += "Z";
+    }
     quadSvg.setAttribute("viewBox", "0 0 " + dispW + " " + dispH);
     /* the outer rectangle and the shape as one path: the even-odd rule then
        darkens everything the crop is about to throw away */
     $("quadShade").setAttribute("d", "M0,0H" + dispW + "V" + dispH + "H0Z" + d);
     $("quadLine").setAttribute("d", d);
     /* the same thirds the rectangle draws, carried through the same mapping, so
-       the lines lie along the page instead of across it */
-    var H = qMap(dq), grid = "", u, a, b, c, e;
-    if (H) for (i = 1; i < 3; i++){
+       the lines lie along the page instead of across it — and bow with it once
+       the edges bend, which is what shows whether the bend matches the text */
+    var grid = "", u, gi, gt, gp, gb;
+    if (Hd) for (i = 1; i < 3; i++){
       u = i / 3;
-      a = mAt(H, u, 0); b = mAt(H, u, 1); c = mAt(H, 0, u); e = mAt(H, 1, u);
-      grid += "M" + nn(a.x) + "," + nn(a.y) + "L" + nn(b.x) + "," + nn(b.y) +
-              "M" + nn(c.x) + "," + nn(c.y) + "L" + nn(e.x) + "," + nn(e.y);
+      for (gi = 0; gi <= 12; gi++){
+        gt = gi / 12;
+        gb = W ? qBend(W, u, gt) : { u: u, v: gt };
+        gp = mAt(Hd, gb.u, gb.v);
+        grid += (gi ? "L" : "M") + nn(gp.x) + "," + nn(gp.y);
+      }
+      for (gi = 0; gi <= 12; gi++){
+        gt = gi / 12;
+        gb = W ? qBend(W, gt, u) : { u: gt, v: u };
+        gp = mAt(Hd, gb.u, gb.v);
+        grid += (gi ? "L" : "M") + nn(gp.x) + "," + nn(gp.y);
+      }
     }
     $("quadGrid").setAttribute("d", grid);
     /* what the straightened photo will measure. The shape is already in the
        photo's own pixels, so this is simply its own size — a tilt zooms the
        view but cannot inflate the figure. */
-    var sz = qSize(cQuad);
+    var sz = qSizeBend(cQuad, W);
     cropSize.textContent = sz.w + " \u00D7 " + sz.h;
   }
 
-  /* Custom keeps its four points while Normal is in front. Switching between
-     the two is a change of which crop applies, not an instruction to throw away
-     a shape that was placed by hand; only Reset does that. */
-  function quadOn(on){
+  /* Custom and Curve keep their four points while Normal is in front, and the
+     bend keeps its own shape while Custom is. Switching between the three says
+     which crop applies, not that anything placed by hand should be thrown away;
+     only Reset does that. */
+  function quadOn(on, curve){
     if (on && !cQuad) cQuad = quadFromFrame();
+    if (on && !cWarp) cWarp = [0,0,0,0,0,0,0,0];
     if (!on) loupeHide();
     qOn = on;
+    qCurve = !!(on && curve);
     quadBox.classList.toggle("hidden", !on);
+    quadBox.classList.toggle("bend", qCurve);
     frame.classList.toggle("hidden", on);
     $("shade").classList.toggle("hidden", on);
     /* a shape with no right angles has no ratio to hold */
     $("ratios").classList.toggle("off", on);
-    $("modeQuad").setAttribute("aria-pressed", on ? "true" : "false");
     $("modeRect").setAttribute("aria-pressed", on ? "false" : "true");
+    $("modeQuad").setAttribute("aria-pressed", (on && !qCurve) ? "true" : "false");
+    $("modeBend").setAttribute("aria-pressed", qCurve ? "true" : "false");
     if (on) layoutQuad(); else layoutFrame();
   }
 
@@ -2698,8 +2892,9 @@
     layoutFrame(); if (qOn) layoutQuad();
   });
 
-  $("modeRect").addEventListener("click", function(){ if (qOn) quadOn(false); });
-  $("modeQuad").addEventListener("click", function(){ if (!qOn) quadOn(true); });
+  $("modeRect").addEventListener("click", function(){ if (qOn) quadOn(false, false); });
+  $("modeQuad").addEventListener("click", function(){ if (!qOn || qCurve) quadOn(true, false); });
+  $("modeBend").addEventListener("click", function(){ if (!qCurve) quadOn(true, true); });
 
   $("tilt").addEventListener("input", function(){
     cFree = parseFloat(this.value) || 0;
@@ -2721,9 +2916,9 @@
     $("flipV").setAttribute("aria-pressed", "false");
     $("tilt").value = 0;
     setRatioButtons(0);
-    /* Reset means all of it, the four points included */
-    cQuad = null;
-    quadOn(false);
+    /* Reset means all of it: the four points and the bend of their edges */
+    cQuad = null; cWarp = null;
+    quadOn(false, false);
     paintEditor(); resetFrame(); layoutFrame();
   });
 
@@ -2803,16 +2998,42 @@
       if (!cQuad) return;
       e.preventDefault(); e.stopPropagation();
       var n = parseInt(g.getAttribute("data-q"), 10);
+      var bending = qCurve && n >= 4;
       var p0 = pt(e), s0 = quadAt(p0.x, p0.y), q0 = cQuad.slice(0);
+      var w0 = cWarp.slice(0), mid = Q_MID[n - 4] || [0, 0];
+      /* a corner is dragged by how far the finger travelled, so where the box
+         happens to sit on the page never comes into it. A bend is different: it
+         is set from where the finger actually is, so the box's own corner has to
+         be taken off first, or the shape is read against the whole screen. */
+      var box = cropBox.getBoundingClientRect();
       var mv = n < 4 ? [n] : [n - 4, (n - 3) % 4];
       qHold = n;
       g.classList.add("held");
       loupeTick();
       attach(function(ev){
         ev.preventDefault();
+        var p = pt(ev), i, j;
+        if (bending){
+          /* the top of the curve goes where the finger is. The finger is on the
+             glass and the bend is described inside the unit square, so the
+             perspective is undone to carry it across; the control itself sits
+             twice as far out as the top of the curve it makes. */
+          var Hi = mInv(qMap(quadView()));
+          if (Hi){
+            var tu = mAt(Hi, Math.max(0, Math.min(dispW, p.x - box.left)),
+                             Math.max(0, Math.min(dispH, p.y - box.top)));
+            var w = w0.slice(0);
+            w[(n - 4) * 2]     = 2 * (tu.x - mid[0]);
+            w[(n - 4) * 2 + 1] = 2 * (tu.y - mid[1]);
+            if (!qBendOK(w)) w = bendSlide(w0, w, n - 4);
+            if (w){ cWarp = w; layoutQuad(); }
+          }
+          loupeTick();
+          return;
+        }
         /* the finger's travel is turned into travel across the photo, so a
            tilted or turned view moves the point the way the eye expects */
-        var p = pt(ev), sp = quadAt(p.x, p.y), q = q0.slice(0), i, j;
+        var sp = quadAt(p.x, p.y), q = q0.slice(0);
         var dx = sp.x - s0.x, dy = sp.y - s0.y;
         for (i = 0; i < mv.length; i++){
           j = mv[i] * 2;
@@ -2850,9 +3071,10 @@
     sh = Math.max(1, Math.min(sh, oH - sy));
 
     var whole = (sx === 0 && sy === 0 && sw === oW && sh === oH);
-    /* the shape is remembered for this photo whichever crop was applied, so
-       coming back to Custom later finds it exactly where it was left */
+    /* the shape and its bend are remembered for this photo whichever crop was
+       applied, so coming back later finds them exactly where they were left */
     quads[cropIdx] = cQuad ? cQuad.slice(0) : null;
+    warps[cropIdx] = cWarp ? cWarp.slice(0) : null;
     if (qOn && cQuad){
       var q = cQuad.slice(0), dq = quadView(), i;
       for (i = 0; i < 8; i++) q[i] = Math.round(q[i] * 10) / 10;
@@ -2865,6 +3087,9 @@
       edits[cropIdx] = { sx: Math.max(0, Math.round(qx)), sy: Math.max(0, Math.round(qy)),
         sw: Math.max(1, Math.round(qw)), sh: Math.max(1, Math.round(qh)),
         rot: cRot, fh: cFH, fv: cFV, free: cFree, ratio: 0, quad: q };
+      /* the bend goes with it only when the edges are actually bent, so a
+         straight-edged crop reaches the pipeline exactly as it always did */
+      if (qCurve && qBent(cWarp)) edits[cropIdx].warp = cWarp.slice(0);
     }
     else if (whole && cRot === 0 && !cFH && !cFV && !cFree) edits[cropIdx] = null;
     else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree, ratio: ratioVal };
