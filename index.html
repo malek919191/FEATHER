@@ -296,8 +296,9 @@
 
   /* The four-point crop. A page photographed from an angle comes back as a
      trapezium, so the frame it needs has no right angles and no ratio to hold:
-     four corners placed on the page itself, and four midpoints that carry a
-     whole edge at once. The outline is drawn as SVG over the photo, while the
+     four corners placed on the page itself, and midpoints that carry a whole
+     edge at once — and, once the edges bend, two more to each edge that travel
+     along it. The outline is drawn as SVG over the photo, while the
      handles stay divs, so each touch target is far larger than the dot the eye
      is aiming with. */
   #quad{position:absolute;inset:0}
@@ -320,6 +321,13 @@
      nothing filling it, because it is a pull rather than a corner */
   #quad.bend .qg.mid::after{left:9px;top:9px;width:14px;height:14px;
     border-width:2px;background:transparent}
+  /* the two handles that travel along an edge, one to each half of it. They
+     have no work among straight edges — a Custom edge holds one corner and no
+     more — so they are simply not there unless the edges bend. A smaller ring
+     than the one in the middle, which is the edge's own. */
+  #quad .qg.side{display:none}
+  #quad.bend .qg.side{display:block}
+  #quad.bend .qg.side::after{left:12px;top:12px;width:8px;height:8px;border-width:2px}
   #quad .qg.held::after{background:#FFFFFF}
 
   /* the finger covers the very corner it is trying to land on, so whatever is
@@ -398,7 +406,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.7</span>
+      <span class="ver">v1.21.8</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -541,6 +549,10 @@
         <div class="qg" data-q="2"></div><div class="qg" data-q="3"></div>
         <div class="qg mid" data-q="4"></div><div class="qg mid" data-q="5"></div>
         <div class="qg mid" data-q="6"></div><div class="qg mid" data-q="7"></div>
+        <div class="qg mid side" data-q="8"></div><div class="qg mid side" data-q="9"></div>
+        <div class="qg mid side" data-q="10"></div><div class="qg mid side" data-q="11"></div>
+        <div class="qg mid side" data-q="12"></div><div class="qg mid side" data-q="13"></div>
+        <div class="qg mid side" data-q="14"></div><div class="qg mid side" data-q="15"></div>
       </div>
       </div>
       </div>
@@ -604,7 +616,7 @@
   /* the four points of every photo, kept whether or not Custom is the crop in
      force, so a trip through Normal and back finds them where they were left,
      and beside them the bend of its four edges, kept the same way */
-  var quads = [], warps = [], kinks = [];
+  var quads = [], warps = [], kinks = [], spots = [];
   /* sharpAll drives every photo; sharps[i] is null until that photo is set
      on its own in the viewer, after which it stops following sharpAll */
   var sharpAll = 0, sharps = [], stubEls = [], sharpToken = 0;
@@ -1597,7 +1609,19 @@
   var BEND_N = 24;                 /* controls to an edge */
   var BEND_K = BEND_N + 3;         /* knots across it, corners included */
   var BEND_H = 1 / BEND_K;         /* one knot's worth of the edge */
-  var BEND_R = 1 / 12;             /* how far along the edge one pull is felt */
+  var BEND_R = 1 / 6;              /* how far along the edge one pull is felt */
+  /* Where an edge's two travelling handles start, and how far along it each may
+     be pushed: a tenth of the edge is kept clear of the corner behind it and a
+     tenth of the middle handle in front, measured so that even on the short
+     edge of a photo no two dots come to sit on top of one another. Each stays
+     in its own half, which is where it was asked for — between the middle
+     handle and one corner. */
+  var SPOT_LO = 0.10, SPOT_HI = 0.40;
+  function spotsZero(){ return [0.25,0.75, 0.25,0.75, 0.25,0.75, 0.25,0.75]; }
+  function spotClamp(side, t){
+    return side ? Math.max(1 - SPOT_HI, Math.min(1 - SPOT_LO, t))
+                : Math.max(SPOT_LO, Math.min(SPOT_HI, t));
+  }
 
   function bendZero(){
     var w = [], i;
@@ -2746,6 +2770,9 @@
      beside the bend and never instead of it, so a trip through Curve and back
      finds the corners where they were left and the bend where it was left. */
   var cKink = null;
+  /* where each edge's two travelling handles have been left, eight numbers in
+     the order the handles are numbered: two to an edge */
+  var cSpots = null;
   /* whether the four points are the user's own yet. Until a point or an edge
      has actually been pulled they are nobody's, so choosing Custom or Curve
      lays them on the crop that is showing rather than on wherever they last
@@ -2950,6 +2977,7 @@
     cWarp = warps[idx] ? warps[idx].slice(0) : null;
     if (cWarp && !qDispOK(cWarp)) cWarp = bendBack(cWarp, false);
     cKink = kinks[idx] ? kinks[idx].slice(0) : null;
+    cSpots = spots[idx] ? spots[idx].slice(0) : null;
     if (cKink && !qDispOK(cKink)) cKink = bendBack(cKink, false);
     /* the shape that was applied says which of the two was in front: sixteen
        numbers is a bend and Curve was, eight is corners and Custom was */
@@ -3119,18 +3147,25 @@
     return qCurve ? cWarp : cKink;
   }
 
+  /* which edge a handle belongs to, and where along it. Handles 4 to 7 are the
+     edge's own, fixed at its middle; 8 and up are the two that travel, one to
+     each half, and they sit wherever they were last left. */
+  function spotAt(n){ return n < 8 ? 0.5 : (cSpots ? cSpots[n - 8] : 0.5); }
+  function spotEdge(n){ return n < 8 ? n - 4 : (n - 8) >> 1; }
+
   function quadPoint(q, n){
     if (n < 4) return { x: q[n*2], y: q[n*2+1] };
     /* the handle sits on the edge it belongs to, wherever that edge has got
        to — the top of the bow under Curve, the corner itself under Custom. At
-       rest it is the middle the four corners give through the perspective,
-       which is not the halfway point between two corners on the glass and was
-       never meant to be: the middle of a page seen at an angle sits nearer its
-       far end, and that is where the page's own middle is. */
+       rest the middle one is the middle the four corners give through the
+       perspective, which is not the halfway point between two corners on the
+       glass and was never meant to be: the middle of a page seen at an angle
+       sits nearer its far end, and that is where the page's own middle is. */
+    var e = spotEdge(n), t = spotAt(n);
     var D = qShape(), m = qOn ? qMap(q) : null;
-    if (m) return qEdgeAt(m, D, n - 4, 0.5);
-    var a = (n - 4) * 2, b = ((n - 3) % 4) * 2;
-    return { x: (q[a] + q[b]) / 2, y: (q[a+1] + q[b+1]) / 2 };
+    if (m) return qEdgeAt(m, D, e, t);
+    var a = e * 2, b = ((e + 1) % 4) * 2;
+    return { x: q[a] + (q[b] - q[a]) * t, y: q[a+1] + (q[b+1] - q[a+1]) * t };
   }
 
   /* a shape whose corners have crossed over has no straightening in it — the
@@ -3178,16 +3213,16 @@
        stays removed. The unit square's top and bottom edges run along u, its
        sides along v, so which half to drop is simply which edge it is. */
     if (e === 0 || e === 2) dx = 0; else dy = 0;
-    /* How far along the edge one pull is felt: a twelfth of it either side of
-       the finger, which with the controls' own reach comes to about a sixth of
-       the edge each way. A pull anywhere in one half therefore leaves the other
-       half exactly where it was, and even a quarter of an edge can be settled
-       without disturbing the quarter beside it — which is the whole reason
-       there is a row of controls and not a pair. Inside that reach each
-       control's share falls away smoothly to nothing at the rim, so the edge
-       takes a rounded bump and never a dent, and the shares are then divided by
-       what they add up to at the point pulled, which is what lands the curve
-       exactly under the finger however many controls answered. */
+    /* How far along the edge one pull is felt: a sixth of it either side of the
+       finger, which with the controls' own reach comes to about a quarter of
+       the edge each way. So one pull covers about half an edge, three of them
+       cover the whole of it, and a pull placed in one half still leaves the
+       other half exactly where it was — which is the whole reason there is a
+       row of controls and not a pair. Inside that reach each control's share
+       falls away smoothly to nothing at the rim, so the edge takes a rounded
+       bump and never a dent, and the shares are then divided by what they add
+       up to at the point pulled, which is what lands the curve exactly under
+       the finger however many controls answered. */
     var n = w0.length / 8, a = [], i, k, r, s = 0;
     for (k = 0; k < n; k++){
       r = ((k + 2) * BEND_H - t) / BEND_R;
@@ -3377,7 +3412,7 @@
 
   function layoutQuad(){
     var dq = quadView(), g = quadBox.querySelectorAll(".qg"), i, p;
-    for (i = 0; i < 8; i++){
+    for (i = 0; i < g.length; i++){
       p = quadPoint(dq, i);
       g[i].style.left = nn(p.x) + "px";
       g[i].style.top = nn(p.y) + "px";
@@ -3439,6 +3474,7 @@
     if (on && (!cQuad || !qOwn)) cQuad = quadFromFrame();
     if (on && !cWarp) cWarp = bendZero();
     if (on && !cKink) cKink = [0,0,0,0,0,0,0,0];
+    if (on && !cSpots) cSpots = spotsZero();
     if (!on) loupeHide();
     qOn = on;
     qCurve = !!(on && curve);
@@ -3465,22 +3501,34 @@
     if (on) layoutQuad(); else layoutFrame();
   }
 
-  /* one bend, however it was started: from the handle in the middle of an edge
-     or from a grab further along it. The finger is on the glass and the bend is
-     described inside the unit square, so the perspective is undone to carry the
-     pull across. */
-  function bendDrag(e, t, w0, box, p){
+  /* one bend, however it was started: from the handle in the middle of an edge,
+     from one of the two that travel along it, or from a grab anywhere along it.
+     The finger is on the glass and the bend is described inside the unit square,
+     so the perspective is undone to carry the pull across.
+     `side` is 0 or 1 for a travelling handle and anything less for the rest. A
+     travelling handle takes its place along the edge from the finger's own place
+     along it, and bends across the edge from there — so the two halves of the
+     gesture do two different jobs and neither is thrown away, while the bend
+     itself still only ever takes the half that runs across. Which coordinate
+     runs along an edge is simply which edge it is: the square's top and bottom
+     run along u, its sides along v. */
+  function bendDrag(e, t, w0, box, p, side){
     var dq = quadView(), m = qMap(dq), Hi = m ? mInv(m) : null;
     if (Hi){
       var c = mAt(m, 0.5, 0.5);
-      var now = qEdgeAt(m, w0, e, t);
-      var a = mAt(Hi, now.x, now.y);
       var b = qBack(Hi, c, Math.max(0, Math.min(dispW, p.x - box.left + panX)),
                            Math.max(0, Math.min(dispH, p.y - box.top + panY)));
       if (b){
+        if (side >= 0){
+          t = spotClamp(side, (e === 0 || e === 2) ? b.x : b.y);
+          cSpots[e*2 + side] = t;
+        }
+        var now = qEdgeAt(m, w0, e, t);
+        var a = mAt(Hi, now.x, now.y);
         var w = bendPull(w0, e, t, b.x - a.x, b.y - a.y);
         if (w && !bendFit(w)) w = bendSlide(w0, e, t, b.x - a.x, b.y - a.y);
-        if (w){ cWarp = w; layoutQuad(); }
+        if (w) cWarp = w;
+        layoutQuad();
       }
     }
     qAim = { x: p.x - box.left + panX, y: p.y - box.top + panY };
@@ -3536,7 +3584,7 @@
         pull(q);
         qAim = { x: q.x - box.left + panX, y: q.y - box.top + panY };
         loupeTick();
-      } else bendDrag(e, t, w0, box, q);
+      } else bendDrag(e, t, w0, box, q, -1);
     }, function(){
       quadBox.classList.remove("pulling");
       loupeHide();
@@ -3655,7 +3703,7 @@
     setRatioButtons(0);
     /* Reset means all of it: the four points, the bend of their edges, and
        the zoom the photo was being looked at through */
-    cQuad = null; cWarp = null; cKink = null; qOwn = false;
+    cQuad = null; cWarp = null; cKink = null; cSpots = null; qOwn = false;
     zoomFit();
     quadOn(false, false);
     paintEditor(); resetFrame(); layoutFrame();
@@ -3930,8 +3978,14 @@
          in both shapes: under Curve it bows the edge, under Custom it puts a
          real corner in it, and neither disturbs the two corners holding the
          edge. Carrying a whole edge is still there and still one gesture — it
-         is the edge itself, grabbed anywhere along it but the handle. */
-      var edgeN = n >= 4 ? n - 4 : -1;
+         is the edge itself, grabbed anywhere along it but the handle.
+         Handles 8 and up are the two that travel along an edge, one to each
+         half. They exist only while the edges bend, and are not on screen
+         otherwise, so a grab on one while Custom is in front cannot happen —
+         and is refused here in any case. */
+      var side = n >= 8 ? ((n - 8) & 1) : -1;
+      if (side >= 0 && (!qCurve || !cSpots)) return;
+      var edgeN = n >= 4 ? spotEdge(n) : -1;
       var p0 = pt(e), q0 = cQuad.slice(0);
       var w0 = cWarp.slice(0), k0 = cKink.slice(0);
       /* a corner is dragged by how far the finger travelled, so where the box
@@ -3939,7 +3993,7 @@
          is set from where the finger actually is, so the box's own corner has to
          be taken off first, or the shape is read against the whole screen. */
       var box = cropBox.getBoundingClientRect();
-      var mv = n < 4 ? [n] : [n - 4, (n - 3) % 4];
+      var mv = n < 4 ? [n] : [edgeN, (edgeN + 1) % 4];
       qOwn = true;
       qHold = n; qAim = null;
       g.classList.add("held");
@@ -3949,7 +4003,7 @@
         ev.preventDefault();
         var p = pt(ev);
         if (edgeN >= 0){
-          if (qCurve) bendDrag(edgeN, 0.5, w0, box, p);
+          if (qCurve) bendDrag(edgeN, spotAt(n), w0, box, p, side);
           else kinkDrag(edgeN, k0, box, p);
           return;
         }
@@ -3990,6 +4044,7 @@
     quads[cropIdx] = cQuad ? cQuad.slice(0) : null;
     warps[cropIdx] = cWarp ? cWarp.slice(0) : null;
     kinks[cropIdx] = cKink ? cKink.slice(0) : null;
+    spots[cropIdx] = cSpots ? cSpots.slice(0) : null;
     /* whichever shape was in front is the one that applies, and it travels as
        one value: the pipeline reads its length and needs to know nothing more */
     var shp = (qOn && qBent(qShape())) ? qShape().slice(0) : null;
