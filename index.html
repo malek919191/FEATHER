@@ -410,7 +410,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.10</span>
+      <span class="ver">v1.21.11</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -1613,17 +1613,30 @@
   var BEND_N = 24;                 /* controls to an edge */
   var BEND_K = BEND_N + 3;         /* knots across it, corners included */
   var BEND_H = 1 / BEND_K;         /* one knot's worth of the edge */
-  /* Where an edge's two travelling handles start, and how far along it each may
-     be pushed: a tenth of the edge is kept clear of the corner behind it and a
-     tenth of the middle handle in front, measured so that even on the short
-     edge of a photo no two dots come to sit on top of one another. Each stays
-     in its own half, which is where it was asked for — between the middle
-     handle and one corner. */
-  var SPOT_LO = 0.10, SPOT_HI = 0.40;
-  function spotsZero(){ return [0.25,0.75, 0.25,0.75, 0.25,0.75, 0.25,0.75]; }
-  function spotClamp(side, t){
-    return side ? Math.max(1 - SPOT_HI, Math.min(1 - SPOT_LO, t))
-                : Math.max(SPOT_LO, Math.min(SPOT_HI, t));
+  /* Where an edge's three handles start, and how far along it each may be
+     taken. All three travel, the big one in the middle included: it is not the
+     middle of anything and never was — where the middle of an edge is, is the
+     four corners' business, and pinning a handle there only meant the one
+     control a user actually reaches for could not be put where the page bends.
+     What holds them apart is a tenth of the edge, from the corner behind and
+     from the next handle along, measured so that even on the short edge of a
+     photo no two dots come to sit on top of one another. Nothing else pins
+     them: a handle taken towards one end pushes whichever are in its way ahead
+     of it rather than stopping against them, so all three can be gathered onto
+     the part of a page that actually curves. */
+  var SPOT_GAP = 0.10;
+  function spotsZero(){
+    return [0.25,0.5,0.75, 0.25,0.5,0.75, 0.25,0.5,0.75, 0.25,0.5,0.75];
+  }
+  /* handle j of edge e taken to t, with whatever stands in its way moved along
+     in front of it, and where it actually landed handed back */
+  function spotPut(S, e, j, t){
+    var b = e * 3, g = SPOT_GAP, k;
+    t = Math.max(g * (j + 1), Math.min(1 - g * (3 - j), t));
+    S[b + j] = t;
+    for (k = j - 1; k >= 0; k--) S[b + k] = Math.min(S[b + k], S[b + k + 1] - g);
+    for (k = j + 1; k < 3; k++) S[b + k] = Math.max(S[b + k], S[b + k - 1] + g);
+    return t;
   }
 
   function bendZero(){
@@ -3138,10 +3151,11 @@
     return q;
   }
 
-  /* handles 0-3 are the corners; 4-7 sit on the middle of each edge. Among
-     straight edges that middle is simply halfway between two corners, which is
-     the point the whole edge travels with. Once the edge can bend it is instead
-     the top of the curve, so the handle stays on the edge it is bending. */
+  /* handles 0-3 are the corners; 4-7 are the big one on each edge and 8 and up
+     the two smaller ones beside it. Under Custom the big one is the edge's own
+     corner, put in the middle of it and moved from there by the displacement
+     itself. Under Curve none of the three is tied to the middle: each sits
+     wherever it was last left along the edge, on the curve it is bending. */
   /* whichever of the two shapes is in front: the bend under Curve, the four
      corners under Custom, and neither under Normal. One value either way, and
      everything that reads it works from its length. */
@@ -3150,17 +3164,24 @@
     return qCurve ? cWarp : cKink;
   }
 
-  /* which edge a handle belongs to, and where along it. Handles 4 to 7 are the
-     edge's own, fixed at its middle; 8 and up are the two that travel, one to
-     each half, and they sit wherever they were last left. */
-  function spotAt(n){ return n < 8 ? 0.5 : (cSpots ? cSpots[n - 8] : 0.5); }
+  /* which edge a handle belongs to, and where along it. Under Curve all three
+     of an edge's handles travel and each is read out of the three numbers that
+     edge keeps — the big one in the middle of them, the two smaller ones either
+     side. Under Custom the answer is a half and always will be: a corner is put
+     at the middle of its edge and taken anywhere from there by the displacement
+     itself, so its place along the edge is not a number of its own. */
+  function spotAt(n){
+    if (n < 4 || !qCurve || !cSpots) return 0.5;
+    return n < 8 ? cSpots[(n - 4) * 3 + 1]
+                 : cSpots[((n - 8) >> 1) * 3 + (((n - 8) & 1) ? 2 : 0)];
+  }
   function spotEdge(n){ return n < 8 ? n - 4 : (n - 8) >> 1; }
 
   function quadPoint(q, n){
     if (n < 4) return { x: q[n*2], y: q[n*2+1] };
     /* the handle sits on the edge it belongs to, wherever that edge has got
-       to — the top of the bow under Curve, the corner itself under Custom. At
-       rest the middle one is the middle the four corners give through the
+       to — on the curve under Curve, the corner itself under Custom. At rest a
+       handle at a half is the middle the four corners give through the
        perspective, which is not the halfway point between two corners on the
        glass and was never meant to be: the middle of a page seen at an angle
        sits nearer its far end, and that is where the page's own middle is. */
@@ -3569,22 +3590,25 @@
     if (on) layoutQuad(); else layoutFrame();
   }
 
-  /* one bend, however it was started: from the handle in the middle of an edge,
-     or from one of the two that travel along it. Those three are the whole of
-     it — the edge itself answers nothing while it can bend.
+  /* one bend, from whichever of an edge's three handles was taken. Those three
+     are the whole of it — the edge itself answers nothing while it can bend.
      The finger is on the glass and the bend is described inside the unit square,
      so the perspective is undone to carry the pull across.
-     `side` is 0 or 1 for a travelling handle and anything less for the middle
-     one. A travelling handle takes its place along the edge from the finger's
-     own place along it, and the edge runs across to meet the finger there — so
-     the two halves of the gesture do two different jobs and neither is thrown
-     away, while the bend itself is still only ever the across-the-edge number.
+     `j` says which of the three: 0 and 2 are the smaller two, 1 the big one.
+     All three read their place along the edge from the finger's own place along
+     it, and the edge runs across to meet the finger there — so the two halves of
+     the gesture do two different jobs and neither is thrown away, while the bend
+     itself is still only ever the across-the-edge number. The big one used to
+     take only the across half and hold at a half along, which is what made it
+     refuse to follow a finger sliding down its own edge.
      Which coordinate runs along an edge is simply which edge it is: the square's
      top and bottom run along u, its sides along v; and an edge's own line is at
      0 for the top and the left, at 1 for the right and the bottom.
-     The other two handles keep the values they had, so what a drag says is only
-     where its own handle goes, and the edge is redrawn through all three. */
-  function bendDrag(e, t, w0, box, p, side){
+     The other two handles are read off the curve where they now stand and handed
+     back unchanged, so what a drag says is only where its own handle goes — and
+     one pushed along by this one keeps the curve it was already sitting on. The
+     edge is then redrawn through all three. */
+  function bendDrag(e, w0, box, p, j){
     var dq = quadView(), m = qMap(dq), Hi = m ? mInv(m) : null;
     if (Hi){
       var c = mAt(m, 0.5, 0.5);
@@ -3592,18 +3616,13 @@
                            Math.max(0, Math.min(dispH, p.y - box.top + panY)));
       if (b){
         var uv = (e === 0 || e === 2);
-        if (side >= 0){
-          t = spotClamp(side, uv ? b.x : b.y);
-          cSpots[e*2 + side] = t;
-        }
-        var i = side < 0 ? 1 : (side ? 2 : 0);
-        var ts = [cSpots[e*2], 0.5, cSpots[e*2 + 1]];
-        var vs = [bendVal(w0, e, ts[0]), bendVal(w0, e, 0.5), bendVal(w0, e, ts[2])];
+        var t = spotPut(cSpots, e, j, uv ? b.x : b.y);
+        var ts = [cSpots[e*3], cSpots[e*3 + 1], cSpots[e*3 + 2]];
+        var vs = [bendVal(w0, e, ts[0]), bendVal(w0, e, ts[1]), bendVal(w0, e, ts[2])];
         var was = bendVal(w0, e, t);
-        ts[i] = t;
-        vs[i] = (uv ? b.y : b.x) - ((e === 1 || e === 2) ? 1 : 0);
+        vs[j] = (uv ? b.y : b.x) - ((e === 1 || e === 2) ? 1 : 0);
         var w = bendSet(w0, e, ts, vs);
-        if (w && !bendFit(w)) w = bendSlide(w0, e, ts, vs, i, was);
+        if (w && !bendFit(w)) w = bendSlide(w0, e, ts, vs, j, was);
         if (w) cWarp = w;
         layoutQuad();
       }
@@ -4051,17 +4070,19 @@
       if (!cQuad) return;
       e.preventDefault(); e.stopPropagation();
       var n = parseInt(g.getAttribute("data-q"), 10);
-      /* A handle in the middle of an edge moves that point and nothing else,
-         in both shapes: under Curve it bows the edge, under Custom it puts a
+      /* A handle on an edge moves that point and nothing else, in both shapes:
+         under Curve it bends the edge where it stands, under Custom it puts a
          real corner in it, and neither disturbs the two corners holding the
          edge. Carrying a whole edge is still there and still one gesture — it
          is the edge itself, grabbed anywhere along it but the handle.
-         Handles 8 and up are the two that travel along an edge, one to each
-         half. They exist only while the edges bend, and are not on screen
-         otherwise, so a grab on one while Custom is in front cannot happen —
-         and is refused here in any case. */
-      var side = n >= 8 ? ((n - 8) & 1) : -1;
-      if (side >= 0 && (!qCurve || !cSpots)) return;
+         `hand` says which of the three an edge carries under Curve: 1 is the
+         big one, 0 and 2 the smaller ones either side of it. The smaller two
+         exist only while the edges bend, and are not on screen otherwise, so a
+         grab on one while Custom is in front cannot happen — and is refused
+         here in any case. */
+      var hand = n < 4 ? -1 : (n < 8 ? 1 : (((n - 8) & 1) ? 2 : 0));
+      if (n >= 8 && !qCurve) return;
+      if (n >= 4 && qCurve && !cSpots) return;
       var edgeN = n >= 4 ? spotEdge(n) : -1;
       var p0 = pt(e), q0 = cQuad.slice(0);
       var w0 = cWarp.slice(0), k0 = cKink.slice(0);
@@ -4080,7 +4101,7 @@
         ev.preventDefault();
         var p = pt(ev);
         if (edgeN >= 0){
-          if (qCurve) bendDrag(edgeN, spotAt(n), w0, box, p, side);
+          if (qCurve) bendDrag(edgeN, w0, box, p, hand);
           else kinkDrag(edgeN, k0, box, p);
           return;
         }
