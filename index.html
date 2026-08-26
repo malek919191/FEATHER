@@ -2771,7 +2771,7 @@
     if (cQuad && !quadOK(cQuad)) cQuad = null;
     qOwn = !!cQuad;
     cWarp = warps[idx] ? warps[idx].slice(0) : null;
-    if (cWarp && !qBendOK(cWarp)) cWarp = null;
+    if (cWarp && !qBendOK(cWarp)) cWarp = bendBack(cWarp, false);
     quadOn(!!(cQuad && e && e.quad), !!(e && qBent(e.warp)));
     lockPage();
     cropper.classList.remove("hidden");
@@ -2995,8 +2995,10 @@
      blank streak down the side of a page. The bulge is therefore held inside
      the photo exactly the way a fold is held out of it, and the edge slides
      along that limit instead of crossing it. */
-  function qBendIn(W){
-    var m = qMap(cQuad), e, i, p;
+  /* q asks the question of a shape the corners have not been moved to yet,
+     which is what lets a corner be stopped before it breaks the bend */
+  function qBendIn(W, q){
+    var m = qMap(q || cQuad), e, i, p;
     if (!m) return true;
     for (e = 0; e < 4; e++) for (i = 0; i <= 16; i++){
       p = qEdgeAt(m, W, e, i / 16);
@@ -3006,7 +3008,7 @@
   }
 
   /* the two things a bend has to be: not folded, and not off the photo */
-  function bendFit(W){ return qBendOK(W) && qBendIn(W); }
+  function bendFit(W, q){ return qBendOK(W) && qBendIn(W, q); }
 
   /* a bend pushed past either limit is walked back the same way a corner is:
      to the furthest pull it can still hold, so it slides against the limit
@@ -3018,8 +3020,34 @@
       w = bendPull(w0, e, t, dx*k, dy*k);
       if (w && bendFit(w)){ best = w; lo = k; } else hi = k;
     }
-    if (!best && !bendFit(w0)) best = bendPull(w0, e, t, dx, dy);
+    /* the way out of a bend that is already broken: take the place the finger
+       asked for, since that is the only direction back. Never a fold, though —
+       a folded map has no straightening in it, and one let through here is
+       what came back later as a crop that could not be applied at all, its
+       bend thrown away and its edges straight again. */
+    if (!best && !bendFit(w0)){
+      w = bendPull(w0, e, t, dx, dy);
+      if (w && qBendOK(w)) best = w;
+    }
     return best;
+  }
+
+  /* The furthest of a bend that still holds, walked back towards the straight
+     edge it came from. A bend that no longer fits is never dropped without a
+     word: dropping one silently is what made a Curve crop come back looking
+     like a Custom one, with the corners right and the bend gone. `all` asks
+     for the whole test — off the photo as well as folded — and is only for
+     where the shape it is measured against is the one on screen. */
+  function bendBack(W, all){
+    var lo = 0, hi = 1, best = null, w, k, i, j;
+    if (!qBent(W)) return W;
+    for (i = 0; i < 12; i++){
+      k = (lo + hi) / 2;
+      w = W.slice(0);
+      for (j = 0; j < 16; j++) w[j] = W[j] * k;
+      if (all ? bendFit(w) : qBendOK(w)){ best = w; lo = k; } else hi = k;
+    }
+    return best || [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
   }
 
   /* The finger, brought back inside the unit square. A perspective map has a
@@ -3054,6 +3082,22 @@
     return best;
   }
 
+  /* What makes a move legal: the shape itself, and — while Curve is in force —
+     the bend the shape is carrying. A corner was checked against the shape and
+     never against the bend, so a corner moved after an edge was bent pushed
+     that bend off the photo behind the user's back: the crop then read from
+     outside the photo, which comes back as the last row of pixels smeared
+     across the page. Here the corner is stopped by the bend the same way it is
+     stopped by a fold, and slides against that limit instead.
+     Under Custom the bend is not in force and not on screen, so it holds
+     nothing back there; quadOn walks it into the shape it finds when Curve is
+     chosen again. And with no bend at all this is the shape test it always
+     was, down to the same arithmetic. */
+  function quadFits(q){
+    if (!quadOK(q)) return false;
+    return !(qCurve && qBent(cWarp)) || bendFit(cWarp, q);
+  }
+
   /* A point dragged too far would fold the shape, and refusing the whole move
      leaves the handle stuck under a finger that is still moving — which reads
      as the app having seized. So the point is walked back along the way it
@@ -3069,13 +3113,13 @@
         q[j]   = q0[j]   + (q1[j]   - q0[j])   * t;
         q[j+1] = q0[j+1] + (q1[j+1] - q0[j+1]) * t;
       }
-      if (quadOK(q)){ best = q; lo = t; } else hi = t;
+      if (quadFits(q)){ best = q; lo = t; } else hi = t;
     }
     /* nothing along the way is legal only when the shape it started from was
        already crossed over. Refusing there would freeze the handle under a
        finger that is still moving, with no way back — so the place the finger
        asked for is taken instead, because it is the only direction out. */
-    if (!best && !quadOK(q0)) best = q1;
+    if (!best && !quadFits(q0)) best = q1;
     return best;
   }
 
@@ -3144,6 +3188,11 @@
   function quadOn(on, curve){
     if (on && (!cQuad || !qOwn)) cQuad = quadFromFrame();
     if (on && !cWarp) cWarp = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    /* the corners are free of the bend while Custom is in front, so the shape
+       Curve comes back to may be one the bend no longer fits. It is walked
+       into that shape here — as far as it will go and no further — rather than
+       shown broken or dropped without a word */
+    if (on && curve && qBent(cWarp) && !bendFit(cWarp)) cWarp = bendBack(cWarp, true);
     if (!on) loupeHide();
     qOn = on;
     qCurve = !!(on && curve);
@@ -3574,7 +3623,7 @@
         q[j]   = Math.max(0, Math.min(bw0, q0[j] + dx));
         q[j+1] = Math.max(0, Math.min(bh0, q0[j+1] + dy));
       }
-      if (!quadOK(q)) q = quadSlide(q0, q, mv);
+      if (!quadFits(q)) q = quadSlide(q0, q, mv);
       if (q){ cQuad = q; layoutQuad(); }
     };
   }
