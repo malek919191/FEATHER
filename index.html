@@ -398,7 +398,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.4</span>
+      <span class="ver">v1.21.5</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -3618,10 +3618,22 @@
     return function(p){
       var sp = quadAt(p.x, p.y), q = q0.slice(0), i, j;
       var dx = sp.x - s0.x, dy = sp.y - s0.y;
+      /* The photo's edge stops the whole move, not one point of it at a time.
+         A corner dragged alone is one point either way, so it still slides
+         along that edge exactly as it always did. But the two corners that
+         carry an edge have to be stopped together: clamped one at a time, the
+         corner that had room went on travelling while the one against the edge
+         stayed pinned, so the edge sheared instead of moving and its midpoint
+         crawled along it at half the speed of the finger. */
       for (i = 0; i < mv.length; i++){
         j = mv[i] * 2;
-        q[j]   = Math.max(0, Math.min(bw0, q0[j] + dx));
-        q[j+1] = Math.max(0, Math.min(bh0, q0[j+1] + dy));
+        dx = Math.max(-q0[j], Math.min(bw0 - q0[j], dx));
+        dy = Math.max(-q0[j+1], Math.min(bh0 - q0[j+1], dy));
+      }
+      for (i = 0; i < mv.length; i++){
+        j = mv[i] * 2;
+        q[j]   = q0[j] + dx;
+        q[j+1] = q0[j+1] + dy;
       }
       if (!quadFits(q)) q = quadSlide(q0, q, mv);
       if (q){ cQuad = q; layoutQuad(); }
