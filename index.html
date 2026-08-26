@@ -398,7 +398,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.5</span>
+      <span class="ver">v1.21.6</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -604,7 +604,7 @@
   /* the four points of every photo, kept whether or not Custom is the crop in
      force, so a trip through Normal and back finds them where they were left,
      and beside them the bend of its four edges, kept the same way */
-  var quads = [], warps = [];
+  var quads = [], warps = [], kinks = [];
   /* sharpAll drives every photo; sharps[i] is null until that photo is set
      on its own in the viewer, after which it stops following sharpAll */
   var sharpAll = 0, sharps = [], stubEls = [], sharpToken = 0;
@@ -1079,6 +1079,7 @@
     edits = sourceFiles.map(function(){ return null; });
     quads = sourceFiles.map(function(){ return null; });
     warps = sourceFiles.map(function(){ return null; });
+    kinks = sourceFiles.map(function(){ return null; });
     sharps = sourceFiles.map(function(){ return null; });
     baseRatio = null; customW = null; customH = null;
     cwEl.value = ""; chEl.value = "";
@@ -1621,6 +1622,66 @@
     return true;
   }
 
+  /* ---- the corner --------------------------------------------------------
+     A bend is for a page that curves. A page that is *folded* does not curve:
+     each half of it is as flat as it ever was and they meet along a hard line,
+     and no curve has a hard line in it. The same is true of anything whose
+     outline simply is not a rectangle — a torn edge, a notch, a shape cut by
+     hand. So Custom gets its own displacement, and it is the exact opposite of
+     the bend: where the bend puts a smooth cubic on each edge, this puts a
+     corner in the middle of it and a straight run to each end. Move all four
+     and the shape has eight sides, every one of them straight, with four real
+     angles that no bend could ever make.
+
+     It is the same construction otherwise — a displacement inside the unit
+     square, applied before the perspective, every control at rest giving the
+     square back untouched — so everything downstream is unchanged and a shape
+     with nothing moved is arithmetically the crop it always was. */
+  /* the two halves of a kinked edge. One control to an edge, because one
+     corner is one corner; the bend needs two because a bow can be lopsided. */
+  function qK(t){ return t < 0.5 ? 2*t : 2*(1-t); }
+
+  /* K holds eight numbers: top, right, bottom and left, one corner each */
+  function qKink(K, u, v){
+    var a = qK(u), b = qK(v);
+    return {
+      u: u + a*((1-v)*K[0] + v*K[4]) + b*((1-u)*K[6] + u*K[2]),
+      v: v + a*((1-v)*K[1] + v*K[5]) + b*((1-u)*K[7] + u*K[3])
+    };
+  }
+
+  /* One value carries either, and its length says which: sixteen numbers is a
+     bend — two controls to an edge, and the edges curve — and eight is a
+     corner on each edge. Nothing at all is the plain straight-edged crop.
+     Holding them the same way is what lets the size, the proportions, the
+     validity checks and the whole of cropQuad serve both without branching. */
+  function qDisp(D, u, v){
+    if (!D) return { u: u, v: v };
+    return D.length === 8 ? qKink(D, u, v) : qBend(D, u, v);
+  }
+
+  /* a kinked map can fold onto itself the same way a bent one can, and the
+     same answer refuses it: the determinant of the Jacobian turning negative
+     anywhere. A tent has no derivative of its own at its peak, so the square
+     is sampled between the kink lines rather than across them. */
+  function qKinkOK(K){
+    var i, j, u, v, h = 1/64, a, b, ux, uy, vx, vy;
+    for (i = 0; i < 8; i++) for (j = 0; j < 8; j++){
+      u = (i + 0.5) / 8; v = (j + 0.5) / 8;
+      a = qKink(K, u - h, v); b = qKink(K, u + h, v);
+      ux = (b.u - a.u) / (2*h); uy = (b.v - a.v) / (2*h);
+      a = qKink(K, u, v - h); b = qKink(K, u, v + h);
+      vx = (b.u - a.u) / (2*h); vy = (b.v - a.v) / (2*h);
+      if (ux*vy - uy*vx < 0.08) return false;
+    }
+    return true;
+  }
+
+  function qDispOK(D){
+    if (!D) return true;
+    return D.length === 8 ? qKinkOK(D) : qBendOK(D);
+  }
+
   function qBent(W){
     if (!W) return false;
     for (var i = 0; i < W.length; i++) if (W[i]) return true;
@@ -1630,11 +1691,11 @@
   /* the four edges of the unit square, each as a start and an end */
   var Q_EDGE = [[0,0, 1,0], [1,0, 1,1], [0,1, 1,1], [0,0, 0,1]];
 
-  /* a point on one edge of the bent square, in whatever space m maps to */
+  /* a point on one edge of the shaped square, in whatever space m maps to */
   function qEdgeAt(m, W, e, t){
     var g = Q_EDGE[e];
     var u = g[0] + (g[2] - g[0]) * t, v = g[1] + (g[3] - g[1]) * t;
-    var b = W ? qBend(W, u, v) : { u: u, v: v };
+    var b = qDisp(W, u, v);
     return mAt(m, b.u, b.v);
   }
 
@@ -1804,17 +1865,27 @@
     var p1, p2, q1 = 0, q2 = 0, a1u = 0, a1v = 0, a2u = 0, a2v = 0, pu, pv;
     var xa, ya, xb, yb, gx, gy, pa, pb, pc, pd, w00, w10, w01, w11, a0, a1, a2, a3, aa, f;
 
+    /* which of the two the edges are doing, asked once rather than per pixel */
+    var Wk = W && W.length === 8;
+
     for (y = 0; y < oh; y++){
       vv = (y + 0.5) / oh;
-      /* the part of the bend that only depends on the row is worked out once */
-      if (W){
+      /* the part that only depends on the row is worked out once */
+      if (Wk){
+        q1 = qK(vv);
+        a1u = (1-vv)*W[0] + vv*W[4]; a1v = (1-vv)*W[1] + vv*W[5];
+      } else if (W){
         q1 = qB1(vv); q2 = qB2(vv);
         a1u = (1-vv)*W[0] + vv*W[8];  a1v = (1-vv)*W[1] + vv*W[9];
         a2u = (1-vv)*W[2] + vv*W[10]; a2v = (1-vv)*W[3] + vv*W[11];
       }
       for (x = 0; x < ow; x++){
         uu = (x + 0.5) / ow;
-        if (W){
+        if (Wk){
+          p1 = qK(uu);
+          pu = uu + p1*a1u + q1*((1-uu)*W[6] + uu*W[2]);
+          pv = vv + p1*a1v + q1*((1-uu)*W[7] + uu*W[3]);
+        } else if (W){
           p1 = qB1(uu); p2 = qB2(uu);
           pu = uu + p1*a1u + p2*a2u + q1*((1-uu)*W[12] + uu*W[4]) + q2*((1-uu)*W[14] + uu*W[6]);
           pv = vv + p1*a1v + p2*a2v + q1*((1-uu)*W[13] + uu*W[5]) + q2*((1-uu)*W[15] + uu*W[7]);
@@ -2570,6 +2641,10 @@
      which is what makes a page whose edge sits a little off a single drag
      instead of two. Held in display pixels, the way fx and fy are. */
   var cQuad = null, qOn = false, qCurve = false, cWarp = null, qHold = -1, qRaf = 0;
+  /* Custom's own shape: one corner on each edge, eight numbers. It is kept
+     beside the bend and never instead of it, so a trip through Curve and back
+     finds the corners where they were left and the bend where it was left. */
+  var cKink = null;
   /* whether the four points are the user's own yet. Until a point or an edge
      has actually been pulled they are nobody's, so choosing Custom or Curve
      lays them on the crop that is showing rather than on wherever they last
@@ -2711,6 +2786,7 @@
     edits.splice(idx, 1);
     quads.splice(idx, 1);
     warps.splice(idx, 1);
+    kinks.splice(idx, 1);
     sharps.splice(idx, 1);
     stubEls.splice(idx, 1);
     fitPicks.splice(idx, 1);
@@ -2771,8 +2847,13 @@
     if (cQuad && !quadOK(cQuad)) cQuad = null;
     qOwn = !!cQuad;
     cWarp = warps[idx] ? warps[idx].slice(0) : null;
-    if (cWarp && !qBendOK(cWarp)) cWarp = bendBack(cWarp, false);
-    quadOn(!!(cQuad && e && e.quad), !!(e && qBent(e.warp)));
+    if (cWarp && !qDispOK(cWarp)) cWarp = bendBack(cWarp, false);
+    cKink = kinks[idx] ? kinks[idx].slice(0) : null;
+    if (cKink && !qDispOK(cKink)) cKink = bendBack(cKink, false);
+    /* the shape that was applied says which of the two was in front: sixteen
+       numbers is a bend and Curve was, eight is corners and Custom was */
+    quadOn(!!(cQuad && e && e.quad),
+           !!(e && e.warp && e.warp.length === 16 && qBent(e.warp)));
     lockPage();
     cropper.classList.remove("hidden");
   }
@@ -2929,12 +3010,24 @@
      straight edges that middle is simply halfway between two corners, which is
      the point the whole edge travels with. Once the edge can bend it is instead
      the top of the curve, so the handle stays on the edge it is bending. */
+  /* whichever of the two shapes is in front: the bend under Curve, the four
+     corners under Custom, and neither under Normal. One value either way, and
+     everything that reads it works from its length. */
+  function qShape(){
+    if (!qOn) return null;
+    return qCurve ? cWarp : cKink;
+  }
+
   function quadPoint(q, n){
     if (n < 4) return { x: q[n*2], y: q[n*2+1] };
-    if (qCurve && cWarp){
-      var m = qMap(q);
-      if (m) return qEdgeAt(m, cWarp, n - 4, 0.5);
-    }
+    /* the handle sits on the edge it belongs to, wherever that edge has got
+       to — the top of the bow under Curve, the corner itself under Custom. At
+       rest it is the middle the four corners give through the perspective,
+       which is not the halfway point between two corners on the glass and was
+       never meant to be: the middle of a page seen at an angle sits nearer its
+       far end, and that is where the page's own middle is. */
+    var D = qShape(), m = qOn ? qMap(q) : null;
+    if (m) return qEdgeAt(m, D, n - 4, 0.5);
     var a = (n - 4) * 2, b = ((n - 3) % 4) * 2;
     return { x: (q[a] + q[b]) / 2, y: (q[a+1] + q[b+1]) / 2 };
   }
@@ -2971,6 +3064,21 @@
      rolls off a spine. So the two controls never have to be counted or chosen:
      the edge is simply grabbed where it is wrong. */
   function bendPull(w0, e, t, dx, dy){
+    /* A bend has one direction that means anything: across the edge. The other
+       one — along the edge — slides the points of the curve about on a path
+       whose shape has not changed, so nothing moves on screen at all. What it
+       does change is which part of the page each column of the output is read
+       from, and that is the whole of the trouble: the app was taking wherever
+       the finger happened to land as the middle of the edge, when the middle
+       is the four corners' to say and not the finger's. So the along-edge half
+       of a pull is dropped here, and the middle stays where the corners put it.
+       Measured against a simulated camera photographing a page ruled both ways
+       and curled the way a book page curls: a line that should run straight
+       down the page came back bowed by 2.2mm across a 210mm page and now comes
+       back at 0.0mm, while the across-the-page bow the bend is there to remove
+       stays removed. The unit square's top and bottom edges run along u, its
+       sides along v, so which half to drop is simply which edge it is. */
+    if (e === 0 || e === 2) dx = 0; else dy = 0;
     /* the share each control takes is its own say at that point, cubed. Plain
        shares would be the least the pair can move, but they make one pull undo
        a good part of the last one, so settling a lopsided edge by hand takes
@@ -2987,6 +3095,33 @@
     w[e*4 + 2] = w0[e*4 + 2] + dx*a2/s;
     w[e*4 + 3] = w0[e*4 + 3] + dy*a2/s;
     return w;
+  }
+
+  /* Setting a corner is the whole of the arithmetic: one control to an edge,
+     and the displacement at the middle of that edge IS the control, so the
+     corner lands exactly where the finger is. Unlike a bend, the along-edge
+     half of the pull is kept and must be — sliding a corner along its own edge
+     moves the corner, which is the point of having one. */
+  function kinkPull(k0, e, dx, dy){
+    var k = k0.slice(0);
+    k[e*2]     = k0[e*2]     + dx;
+    k[e*2 + 1] = k0[e*2 + 1] + dy;
+    return k;
+  }
+
+  /* and walked back to the furthest that holds, the way a bend is */
+  function kinkSlide(k0, e, dx, dy){
+    var lo = 0, hi = 1, best = null, k, c, i;
+    for (i = 0; i < 12; i++){
+      c = (lo + hi) / 2;
+      k = kinkPull(k0, e, dx*c, dy*c);
+      if (k && bendFit(k)){ best = k; lo = c; } else hi = c;
+    }
+    if (!best && !bendFit(k0)){
+      k = kinkPull(k0, e, dx, dy);
+      if (k && qDispOK(k)) best = k;
+    }
+    return best;
   }
 
   /* A bend can push an edge clean off the photo, and out there is nothing to
@@ -3008,7 +3143,7 @@
   }
 
   /* the two things a bend has to be: not folded, and not off the photo */
-  function bendFit(W, q){ return qBendOK(W) && qBendIn(W, q); }
+  function bendFit(W, q){ return qDispOK(W) && qBendIn(W, q); }
 
   /* a bend pushed past either limit is walked back the same way a corner is:
      to the furthest pull it can still hold, so it slides against the limit
@@ -3027,7 +3162,7 @@
        bend thrown away and its edges straight again. */
     if (!best && !bendFit(w0)){
       w = bendPull(w0, e, t, dx, dy);
-      if (w && qBendOK(w)) best = w;
+      if (w && qDispOK(w)) best = w;
     }
     return best;
   }
@@ -3044,10 +3179,12 @@
     for (i = 0; i < 12; i++){
       k = (lo + hi) / 2;
       w = W.slice(0);
-      for (j = 0; j < 16; j++) w[j] = W[j] * k;
-      if (all ? bendFit(w) : qBendOK(w)){ best = w; lo = k; } else hi = k;
+      for (j = 0; j < W.length; j++) w[j] = W[j] * k;
+      if (all ? bendFit(w) : qDispOK(w)){ best = w; lo = k; } else hi = k;
     }
-    return best || [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    if (best) return best;
+    for (j = 0; j < W.length; j++) W[j] = 0;
+    return W;
   }
 
   /* The finger, brought back inside the unit square. A perspective map has a
@@ -3095,7 +3232,8 @@
      was, down to the same arithmetic. */
   function quadFits(q){
     if (!quadOK(q)) return false;
-    return !(qCurve && qBent(cWarp)) || bendFit(cWarp, q);
+    var D = qShape();
+    return !qBent(D) || bendFit(D, q);
   }
 
   /* A point dragged too far would fold the shape, and refusing the whole move
@@ -3135,7 +3273,7 @@
     /* the outline is walked rather than joined corner to corner, so one piece
        of drawing serves a straight shape and a bent one alike: with no bend the
        walk lands on the straight line anyway */
-    var Hd = qMap(dq), W = (qCurve && qBent(cWarp)) ? cWarp : null;
+    var Hd = qMap(dq), W = qShape();
     var d = "";
     if (Hd){
       var walk = [[0, 0, 1], [1, 0, 1], [2, 1, 0], [3, 1, 0]], wk, ti, tt, pp;
@@ -3161,13 +3299,13 @@
       u = i / 3;
       for (gi = 0; gi <= 12; gi++){
         gt = gi / 12;
-        gb = W ? qBend(W, u, gt) : { u: u, v: gt };
+        gb = qDisp(W, u, gt);
         gp = mAt(Hd, gb.u, gb.v);
         grid += (gi ? "L" : "M") + nn(gp.x) + "," + nn(gp.y);
       }
       for (gi = 0; gi <= 12; gi++){
         gt = gi / 12;
-        gb = W ? qBend(W, gt, u) : { u: gt, v: u };
+        gb = qDisp(W, gt, u);
         gp = mAt(Hd, gb.u, gb.v);
         grid += (gi ? "L" : "M") + nn(gp.x) + "," + nn(gp.y);
       }
@@ -3188,14 +3326,21 @@
   function quadOn(on, curve){
     if (on && (!cQuad || !qOwn)) cQuad = quadFromFrame();
     if (on && !cWarp) cWarp = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
-    /* the corners are free of the bend while Custom is in front, so the shape
-       Curve comes back to may be one the bend no longer fits. It is walked
-       into that shape here — as far as it will go and no further — rather than
-       shown broken or dropped without a word */
-    if (on && curve && qBent(cWarp) && !bendFit(cWarp)) cWarp = bendBack(cWarp, true);
+    if (on && !cKink) cKink = [0,0,0,0,0,0,0,0];
     if (!on) loupeHide();
     qOn = on;
     qCurve = !!(on && curve);
+    /* Each shape keeps its own while the other is in front, and the four
+       corners are free of whichever is behind — so the one coming forward may
+       be one those corners no longer fit. It is walked into them here, as far
+       as it will go and no further, rather than shown broken or dropped
+       without a word. */
+    if (on){
+      var D = qShape();
+      if (qBent(D) && !bendFit(D)){
+        if (qCurve) cWarp = bendBack(D, true); else cKink = bendBack(D, true);
+      }
+    }
     quadBox.classList.toggle("hidden", !on);
     quadBox.classList.toggle("bend", qCurve);
     frame.classList.toggle("hidden", on);
@@ -3230,6 +3375,27 @@
     loupeTick();
   }
 
+  /* the same walk for a corner: the finger is on the glass and the corner is
+     described inside the unit square, so the perspective is undone to carry
+     the pull across */
+  function kinkDrag(e, k0, box, p){
+    var dq = quadView(), m = qMap(dq), Hi = m ? mInv(m) : null;
+    if (Hi){
+      var c = mAt(m, 0.5, 0.5);
+      var now = qEdgeAt(m, k0, e, 0.5);
+      var a = mAt(Hi, now.x, now.y);
+      var b = qBack(Hi, c, Math.max(0, Math.min(dispW, p.x - box.left + panX)),
+                           Math.max(0, Math.min(dispH, p.y - box.top + panY)));
+      if (b){
+        var k = kinkPull(k0, e, b.x - a.x, b.y - a.y);
+        if (k && !bendFit(k)) k = kinkSlide(k0, e, b.x - a.x, b.y - a.y);
+        if (k){ cKink = k; layoutQuad(); }
+      }
+    }
+    qAim = { x: p.x - box.left + panX, y: p.y - box.top + panY };
+    loupeTick();
+  }
+
   /* The edge itself is grabbable, anywhere along it, in both shapes. Under
      Curve that pull bends it, and the second control each edge has never needs
      a control of its own on screen. Under Custom the edge has nothing to bend,
@@ -3241,7 +3407,7 @@
     if (!qOn || !cQuad || !cWarp) return;
     var p = pt(ev), box = cropBox.getBoundingClientRect();
     var x = p.x - box.left + panX, y = p.y - box.top + panY;
-    var near = bendNear(quadView(), qCurve ? cWarp : null, x, y);
+    var near = bendNear(quadView(), qShape(), x, y);
     if (!near || Math.sqrt(near.d) > 26) return;
     ev.preventDefault(); ev.stopPropagation();
     var e = near.e, t = near.t, w0 = cWarp.slice(0);
@@ -3376,7 +3542,7 @@
     setRatioButtons(0);
     /* Reset means all of it: the four points, the bend of their edges, and
        the zoom the photo was being looked at through */
-    cQuad = null; cWarp = null; qOwn = false;
+    cQuad = null; cWarp = null; cKink = null; qOwn = false;
     zoomFit();
     quadOn(false, false);
     paintEditor(); resetFrame(); layoutFrame();
@@ -3647,9 +3813,14 @@
       if (!cQuad) return;
       e.preventDefault(); e.stopPropagation();
       var n = parseInt(g.getAttribute("data-q"), 10);
-      var bending = qCurve && n >= 4;
+      /* A handle in the middle of an edge moves that point and nothing else,
+         in both shapes: under Curve it bows the edge, under Custom it puts a
+         real corner in it, and neither disturbs the two corners holding the
+         edge. Carrying a whole edge is still there and still one gesture — it
+         is the edge itself, grabbed anywhere along it but the handle. */
+      var edgeN = n >= 4 ? n - 4 : -1;
       var p0 = pt(e), q0 = cQuad.slice(0);
-      var w0 = cWarp.slice(0);
+      var w0 = cWarp.slice(0), k0 = cKink.slice(0);
       /* a corner is dragged by how far the finger travelled, so where the box
          happens to sit on the page never comes into it. A bend is different: it
          is set from where the finger actually is, so the box's own corner has to
@@ -3664,7 +3835,11 @@
       attach(function(ev){
         ev.preventDefault();
         var p = pt(ev);
-        if (bending){ bendDrag(n - 4, 0.5, w0, box, p); return; }
+        if (edgeN >= 0){
+          if (qCurve) bendDrag(edgeN, 0.5, w0, box, p);
+          else kinkDrag(edgeN, k0, box, p);
+          return;
+        }
         pull(p);
         loupeTick();
       }, function(){
@@ -3701,6 +3876,10 @@
        applied, so coming back later finds them exactly where they were left */
     quads[cropIdx] = cQuad ? cQuad.slice(0) : null;
     warps[cropIdx] = cWarp ? cWarp.slice(0) : null;
+    kinks[cropIdx] = cKink ? cKink.slice(0) : null;
+    /* whichever shape was in front is the one that applies, and it travels as
+       one value: the pipeline reads its length and needs to know nothing more */
+    var shp = (qOn && qBent(qShape())) ? qShape().slice(0) : null;
     if (qOn && cQuad){
       var q = cQuad.slice(0), dq = quadView(), i;
       for (i = 0; i < 8; i++) q[i] = Math.round(q[i] * 10) / 10;
@@ -3713,13 +3892,12 @@
       edits[cropIdx] = { sx: Math.max(0, Math.round(qx)), sy: Math.max(0, Math.round(qy)),
         sw: Math.max(1, Math.round(qw)), sh: Math.max(1, Math.round(qh)),
         rot: cRot, fh: cFH, fv: cFV, free: cFree, ratio: 0, quad: q };
-      /* the bend goes with it only when the edges are actually bent, so a
-         straight-edged crop reaches the pipeline exactly as it always did */
-      if (qCurve && qBent(cWarp)) edits[cropIdx].warp = cWarp.slice(0);
+      /* the shape goes with it only when an edge has actually been moved, so
+         a straight-edged crop reaches the pipeline exactly as it always did */
+      if (shp) edits[cropIdx].warp = shp;
       /* and the proportions the page really had, worked out from the photo's
          own lens — the figure shown under the photo is the one that saves */
-      var ar = qAspectBend(cQuad, (qCurve && qBent(cWarp)) ? cWarp : null,
-                           qAspect(cQuad, bw0, bh0, cLens));
+      var ar = qAspectBend(cQuad, shp, qAspect(cQuad, bw0, bh0, cLens));
       if (ar > 0) edits[cropIdx].aspect = ar;
     }
     else if (whole && cRot === 0 && !cFH && !cFV && !cFree) edits[cropIdx] = null;
