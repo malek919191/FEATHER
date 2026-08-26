@@ -398,7 +398,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.3</span>
+      <span class="ver">v1.21.4</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -2570,6 +2570,11 @@
      which is what makes a page whose edge sits a little off a single drag
      instead of two. Held in display pixels, the way fx and fy are. */
   var cQuad = null, qOn = false, qCurve = false, cWarp = null, qHold = -1, qRaf = 0;
+  /* whether the four points are the user's own yet. Until a point or an edge
+     has actually been pulled they are nobody's, so choosing Custom or Curve
+     lays them on the crop that is showing rather than on wherever they last
+     happened to fall. The first pull is what gives them their own memory. */
+  var qOwn = false;
   var qAim = null;      /* the spot under the finger, in the box's own pixels */
   var cLens = 0;      /* this photo's lens, in its own pixels */
   var quadBox = $("quad"), quadSvg = $("quadSvg"), loupe = $("loupe"), loupeCv = $("loupeCv");
@@ -2754,6 +2759,8 @@
     if (e){
       fx = e.sx * viewK; fy = e.sy * viewK;
       fw = e.sw * viewK; fh = e.sh * viewK;
+      /* a crop already placed is the user's own: the zoom leaves it alone */
+      frameSet = true;
     } else resetFrame();
     layoutFrame();
     /* the four points and the bend of their edges come back from this photo's
@@ -2762,6 +2769,7 @@
        behind whatever else is in front */
     cQuad = quads[idx] ? quads[idx].slice(0) : null;
     if (cQuad && !quadOK(cQuad)) cQuad = null;
+    qOwn = !!cQuad;
     cWarp = warps[idx] ? warps[idx].slice(0) : null;
     if (cWarp && !qBendOK(cWarp)) cWarp = null;
     quadOn(!!(cQuad && e && e.quad), !!(e && qBent(e.warp)));
@@ -2870,6 +2878,7 @@
      size is the whole photo, and zoomed in is the part being looked at */
   function resetFrame(){
     var ww = winW(), wh = winH();
+    frameSet = false;
     if (ratioVal > 0){
       var w = ww, h = w / ratioVal;
       if (h > wh){ h = wh; w = h * ratioVal; }
@@ -3133,7 +3142,7 @@
      which crop applies, not that anything placed by hand should be thrown away;
      only Reset does that. */
   function quadOn(on, curve){
-    if (on && !cQuad) cQuad = quadFromFrame();
+    if (on && (!cQuad || !qOwn)) cQuad = quadFromFrame();
     if (on && !cWarp) cWarp = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
     if (!on) loupeHide();
     qOn = on;
@@ -3188,6 +3197,7 @@
     ev.preventDefault(); ev.stopPropagation();
     var e = near.e, t = near.t, w0 = cWarp.slice(0);
     var pull = qCurve ? null : quadPull([e, (e + 1) % 4], p, cQuad.slice(0));
+    qOwn = true;
     qHold = 4 + e; qAim = { x: x, y: y };
     quadBox.classList.add("pulling");
     loupeTick();
@@ -3317,7 +3327,7 @@
     setRatioButtons(0);
     /* Reset means all of it: the four points, the bend of their edges, and
        the zoom the photo was being looked at through */
-    cQuad = null; cWarp = null;
+    cQuad = null; cWarp = null; qOwn = false;
     zoomFit();
     quadOn(false, false);
     paintEditor(); resetFrame(); layoutFrame();
@@ -3375,28 +3385,54 @@
   function winW(){ return Math.min(viewW, dispW - panX); }
   function winH(){ return Math.min(viewH, dispH - panY); }
 
-  function frameIsWindow(){
-    if (ratioVal > 0) return false;
-    return Math.abs(fx - panX) < 1.5 && Math.abs(fy - panY) < 1.5 &&
-           Math.abs(fw - winW()) < 1.5 && Math.abs(fh - winH()) < 1.5;
+  /* true once the crop has been settled onto the photo's own pixels. Pulling
+     back out of the zoom is what settles it, and from that moment nothing the
+     zoom or the pan does moves it again — however far back in the photo is
+     zoomed afterwards. Only Reset, a ratio button or a turn hands it back to
+     the window. */
+  var frameSet = false;
+
+  /* where the crop sits inside the window, as fractions of it. Held that way,
+     zooming further in tightens the crop onto what is being looked at and
+     carries its shape along — the edge moved by hand included, since the
+     window keeps its own proportions whatever the zoom does — and moving the
+     photo takes the crop with it. A crop that fills the window goes on filling
+     it, which is the whole photo at full size and the part being looked at
+     once zoomed in. */
+  function frameHold(){
+    var ww = winW() || 1, wh = winH() || 1;
+    return { x: (fx - panX) / ww, y: (fy - panY) / wh, w: fw / ww, h: fh / wh };
+  }
+
+  function framePut(h){
+    var ww = winW(), wh = winH();
+    fw = h.w * ww; fh = h.h * wh;
+    fx = panX + h.x * ww; fy = panY + h.y * wh;
   }
 
   function frameToWindow(){
     fx = panX; fy = panY; fw = winW(); fh = winH();
   }
 
+  /* the furthest in this gesture has reached. A pinch is never perfectly
+     steady, so the turn back out is read against the peak rather than against
+     the last frame, and a tremor while zooming in cannot settle the crop. */
+  var zPeak = 1;
+
   function zoomTo(k, sx, sy, cx, cy){
     k = Math.max(1, Math.min(k, zMax));
-    /* asked before anything moves, since the window is about to become a
-       different rectangle from the one the crop is being compared against */
-    var follow = frameIsWindow();
+    /* taken before anything moves, since the window is about to become a
+       different rectangle from the one the crop is held against */
+    var hold = frameSet ? null : frameHold();
+    if (k > zPeak) zPeak = k;
+    else if (k < zPeak * 0.97 && zPeak > 1){ frameSet = true; hold = null; }
     var now = fitK * k, r = now / viewK;
     if (r !== 1){ fx *= r; fy *= r; fw *= r; fh *= r; }
     zoomK = k;
     panX = cx * now - sx;
     panY = cy * now - sy;
     paintEditor();
-    if (follow) frameToWindow();
+    if (hold) framePut(hold);
     layoutFrame();
     if (qOn) layoutQuad();
   }
@@ -3411,6 +3447,7 @@
     var sx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - box.left;
     var sy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - box.top;
     var d = twoGap(e.touches[0], e.touches[1]);
+    zPeak = zoomK;
     pinch = d > 0 ? { d0: d, k0: zoomK, box: box,
                       cx: (sx + panX) / viewK, cy: (sy + panY) / viewK } : null;
   }
@@ -3446,15 +3483,16 @@
        the inside of the crop's own rectangle included */
     if (e.target.closest(".grip") || e.target.closest(".qg")) return;
     e.preventDefault();
-    var p0 = pt(e), x0 = panX, y0 = panY, follow = frameIsWindow();
+    var p0 = pt(e), x0 = panX, y0 = panY, hold = frameSet ? null : frameHold();
     attach(function(ev){
       ev.preventDefault();
       var p = pt(ev);
       panX = x0 - (p.x - p0.x);
       panY = y0 - (p.y - p0.y);
       clampPan();
-      /* the crop is the window, so moving the photo under it crops elsewhere */
-      if (follow){ frameToWindow(); layoutFrame(); }
+      /* the crop holds its place in the window, so moving the photo under it
+         crops elsewhere — until a zoom out settles it */
+      if (hold){ framePut(hold); layoutFrame(); }
       placeView(); drawSoon();
     });
   }
@@ -3557,6 +3595,7 @@
          be taken off first, or the shape is read against the whole screen. */
       var box = cropBox.getBoundingClientRect();
       var mv = n < 4 ? [n] : [n - 4, (n - 3) % 4];
+      qOwn = true;
       qHold = n; qAim = null;
       g.classList.add("held");
       loupeTick();
