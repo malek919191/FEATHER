@@ -302,10 +302,14 @@
      handles stay divs, so each touch target is far larger than the dot the eye
      is aiming with. */
   #quad{position:absolute;inset:0}
-  /* the whole shape takes the finger, because the edge itself is what is
-     grabbed and not only the dot sitting on it — the same in Custom, where a
-     grabbed edge travels, as in Curve, where it bends */
+  /* Under Custom the whole shape takes the finger, because a grabbed edge
+     travels and it is grabbed anywhere along it, not only at the dot. Under
+     Curve it takes nothing: the three handles an edge carries already reach
+     everywhere along it, so the shape lets a finger through to the photo
+     underneath, where one finger moves the photo in the window. The handles
+     set pointer-events themselves and go on working either way. */
   #quad{pointer-events:auto}
+  #quad.bend{pointer-events:none}
   #quad.pulling #quadLine{stroke-width:2.5}
   #quadSvg{position:absolute;inset:0;width:100%;height:100%}
   #quadShade{fill:rgba(10,16,22,.62)}
@@ -406,7 +410,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.8</span>
+      <span class="ver">v1.21.9</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -3191,12 +3195,12 @@
     return true;
   }
 
-  /* Pulling an edge means moving the controls near where it was grabbed, and
-     only those. Nothing about that has to be counted or chosen by hand: the
-     edge is simply grabbed where it is wrong, and the controls within reach of
-     the finger answer in proportion to how near they are. Grabbed at its middle
-     — which is where the handle sits — the edge bows evenly about that point;
-     grabbed nearer one end, that end bends and the far end stays put. */
+  /* Pulling an edge means moving the controls near where the handle was, and
+     only those. Nothing about that has to be counted or chosen by hand: a
+     handle is taken to where the edge is wrong, and the controls within reach
+     of it answer in proportion to how near they are. Pulled at the middle the
+     edge bows evenly about that point; pulled nearer one end, that end bends
+     and the far end stays exactly put. */
   function bendPull(w0, e, t, dx, dy){
     /* A bend has one direction that means anything: across the edge. The other
        one — along the edge — slides the points of the curve about on a path
@@ -3502,7 +3506,8 @@
   }
 
   /* one bend, however it was started: from the handle in the middle of an edge,
-     from one of the two that travel along it, or from a grab anywhere along it.
+     or from one of the two that travel along it. Those three are the whole of
+     it — the edge itself answers nothing while it can bend.
      The finger is on the glass and the bend is described inside the unit square,
      so the perspective is undone to carry the pull across.
      `side` is 0 or 1 for a travelling handle and anything less for the rest. A
@@ -3556,23 +3561,25 @@
     loupeTick();
   }
 
-  /* The edge itself is grabbable, anywhere along it, in both shapes. Under
-     Curve that pull bends it just where it was taken hold of, and the row of
-     controls behind that never shows on screen — eight handles is all there
-     ever is to grab. Under Custom the edge has nothing to bend,
-     so the pull carries the whole edge — the two corners that hold it — which
-     is exactly what its midpoint handle does, only without having to land on
-     the dot. The dot is a small target on a page held at arm's length; the
-     edge running past it is not. */
+  /* Under Custom the edge itself is grabbable, anywhere along it, and the pull
+     carries the whole edge — the two corners that hold it. That is the one
+     thing no handle there does: the midpoint handle puts a corner in the edge
+     instead. And it is grabbed along its length rather than at the dot, because
+     the dot is a small target on a page held at arm's length and the edge
+     running past it is not.
+     Under Curve the edge answers nothing. Its three handles already reach
+     everywhere along it — the middle one and the two that travel — so a grab on
+     the edge was the same job done twice and by a second rule, and the finger
+     is better spent moving the photo in the window. One way in, and only one. */
   function edgeGrab(ev){
-    if (!qOn || !cQuad || !cWarp) return;
+    if (!qOn || qCurve || !cQuad) return;
     var p = pt(ev), box = cropBox.getBoundingClientRect();
     var x = p.x - box.left + panX, y = p.y - box.top + panY;
     var near = bendNear(quadView(), qShape(), x, y);
     if (!near || Math.sqrt(near.d) > 26) return;
     ev.preventDefault(); ev.stopPropagation();
-    var e = near.e, t = near.t, w0 = cWarp.slice(0);
-    var pull = qCurve ? null : quadPull([e, (e + 1) % 4], p, cQuad.slice(0));
+    var e = near.e;
+    var pull = quadPull([e, (e + 1) % 4], p, cQuad.slice(0));
     qOwn = true;
     qHold = 4 + e; qAim = { x: x, y: y };
     quadBox.classList.add("pulling");
@@ -3580,11 +3587,9 @@
     attach(function(mv){
       mv.preventDefault();
       var q = pt(mv);
-      if (pull){
-        pull(q);
-        qAim = { x: q.x - box.left + panX, y: q.y - box.top + panY };
-        loupeTick();
-      } else bendDrag(e, t, w0, box, q, -1);
+      pull(q);
+      qAim = { x: q.x - box.left + panX, y: q.y - box.top + panY };
+      loupeTick();
     }, function(){
       quadBox.classList.remove("pulling");
       loupeHide();

@@ -60,7 +60,9 @@ It is designed as a mini PWA for mobile, particularly iOS — see the `apple-mob
 
    **The two extra handles travel.** Neither is pinned to the quarter it starts at. One gesture does both jobs at once, and does them with the two halves of the same drag: the part that runs *along* the edge carries the handle to where the finger is along it, and the part that runs *across* bends the edge there. So the handle is simply always under the fingertip, and the edge bends wherever you take it. Each keeps to its own half — that is what it is for, being the handle between the middle and one corner — and stops a tenth of the edge short of both, so that even on the short edge of a photo no two dots come to sit on top of one another. Where they were left is remembered per photo, the way the shape and the bend are, and only `Reset` puts them back at a quarter and three quarters.
 
-   **The edge is the handle — in both shapes.** An edge is grabbed anywhere along it, never only at a dot sitting on it, because a dot is a small target on a page held at arm's length and the edge running past it is not. That is what the handles are laid over rather than what they replace: the three dots on a `Curve` edge say where the control is and give it somewhere to rest, and the edge between them still answers a finger put anywhere along it. Grabbed along its length the pull carries the whole edge — the two corners holding it — in both shapes; the handle sitting on it does a different job in each, a corner under `Custom` and a bow under `Curve`, and neither disturbs those two corners. One walk serves a corner and the pair that carries an edge, so the handle and the edge itself cannot drift apart.
+   **Under `Custom` the edge is the handle; under `Curve` the handles are.** A `Custom` edge is grabbed anywhere along it, never only at the dot sitting on it, because a dot is a small target on a page held at arm's length and the edge running past it is not — and the pull carries the whole edge, the two corners holding it, which is the one thing no handle there does: the midpoint handle puts a corner in the edge instead. One walk serves that corner and the pair that carries the edge, so the handle and the edge itself cannot drift apart.
+
+   A `Curve` edge answers nothing at all. Since v1.21.9 the three handles it carries are the whole of the way in — and they had to be, because once two of them travel the length of the edge, a grab on the edge does the same job a second time and by a second rule, which is exactly the kind of overlap that makes a control hard to describe and hard to trust. One way in, and only one. It buys something back as well: with the shape no longer taking the finger under `Curve`, a finger put on the page moves the photo in the window, the way it does everywhere else in the editor.
 
    **A bend stays on the photo.** Beyond the photo's edge there is nothing to read: the sampler clamps to the last row of pixels it has, so an output area that fell outside comes back as that row smeared across it — the blank streak down the side of a page. `qBendIn()` holds the bulge inside the photo the way `qBendOK()` holds the fold out of it, and the edge slides along that limit instead of crossing it.
 
@@ -169,7 +171,7 @@ Naming the current one is what makes the step checkable: nobody can judge a jump
 
 **Where it is displayed:** the version appears inside the app itself — **top-right, beneath the words `on-device`** — in the `<span class="ver">` inside `.meta-right` in `index.html`. Any bump must be applied there as part of the same change.
 
-The current version in `index.html` is **`v1.21.8`**.
+The current version in `index.html` is **`v1.21.9`**.
 
 ## Git workflow and release history
 
