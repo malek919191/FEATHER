@@ -289,6 +289,10 @@
      handles stay divs, so each touch target is far larger than the dot the eye
      is aiming with. */
   #quad{position:absolute;inset:0;pointer-events:none}
+  /* while the edges can bend, the whole shape takes the finger, because the
+     edge itself is what is being grabbed and not only the dot on it */
+  #quad.bend{pointer-events:auto}
+  #quad.pulling #quadLine{stroke-width:2.5}
   #quadSvg{position:absolute;inset:0;width:100%;height:100%}
   #quadShade{fill:rgba(10,16,22,.62)}
   #quadGrid{fill:none;stroke:rgba(255,255,255,.35);stroke-width:1}
@@ -381,7 +385,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.19.1</span>
+      <span class="ver">v1.20</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -1555,10 +1559,24 @@
      offsets from the middle of that edge. Each edge is then the quadratic
      curve through its two corners and its own control, and the corners
      themselves never move. */
+  /* the two humps of a cubic edge, and their slopes. One control per edge
+     could only bow it evenly; two let the bend sit nearer one end than the
+     other, which is the shape a page takes as it rolls off a spine. Both at
+     rest still give the straight edge back exactly. */
+  function qB1(t){ return 3*t*(1-t)*(1-t); }
+  function qB2(t){ return 3*t*t*(1-t); }
+  function qB1d(t){ return 3*(1-t)*(1-3*t); }
+  function qB2d(t){ return 3*t*(2-3*t); }
+
+  /* W holds sixteen numbers: top, right, bottom and left, two controls each */
   function qBend(W, u, v){
-    var au = 2*u*(1-u), av = 2*v*(1-v);
-    return { u: u + au*((1-v)*W[0] + v*W[4]) + av*((1-u)*W[6] + u*W[2]),
-             v: v + au*((1-v)*W[1] + v*W[5]) + av*((1-u)*W[7] + u*W[3]) };
+    var p1 = qB1(u), p2 = qB2(u), q1 = qB1(v), q2 = qB2(v);
+    return {
+      u: u + p1*((1-v)*W[0] + v*W[8])  + p2*((1-v)*W[2]  + v*W[10])
+           + q1*((1-u)*W[12] + u*W[4]) + q2*((1-u)*W[14] + u*W[6]),
+      v: v + p1*((1-v)*W[1] + v*W[9])  + p2*((1-v)*W[3]  + v*W[11])
+           + q1*((1-u)*W[13] + u*W[5]) + q2*((1-u)*W[15] + u*W[7])
+    };
   }
 
   /* a bend pushed far enough folds the map onto itself, and a folded map has no
@@ -1568,14 +1586,19 @@
      anything a page asks for: a page needs about a fifth, and folding does not
      begin until a whole one. */
   function qBendOK(W){
-    var i, j, u, v, au, av, pu, pv, ux, uy, vx, vy;
+    var i, j, u, v, p1, p2, q1, q2, P1, P2, Q1, Q2, ux, uy, vx, vy;
     for (i = 0; i <= 8; i++) for (j = 0; j <= 8; j++){
       u = i / 8; v = j / 8;
-      au = 2*u*(1-u); av = 2*v*(1-v); pu = 2 - 4*u; pv = 2 - 4*v;
-      ux = 1 + pu*((1-v)*W[0] + v*W[4]) + av*(W[2] - W[6]);
-      uy =     pu*((1-v)*W[1] + v*W[5]) + av*(W[3] - W[7]);
-      vx =     au*(W[4] - W[0]) + pv*((1-u)*W[6] + u*W[2]);
-      vy = 1 + au*(W[5] - W[1]) + pv*((1-u)*W[7] + u*W[3]);
+      p1 = qB1(u); p2 = qB2(u); q1 = qB1(v); q2 = qB2(v);
+      P1 = qB1d(u); P2 = qB2d(u); Q1 = qB1d(v); Q2 = qB2d(v);
+      ux = 1 + P1*((1-v)*W[0] + v*W[8]) + P2*((1-v)*W[2] + v*W[10])
+             + q1*(W[4] - W[12]) + q2*(W[6] - W[14]);
+      uy =     P1*((1-v)*W[1] + v*W[9]) + P2*((1-v)*W[3] + v*W[11])
+             + q1*(W[5] - W[13]) + q2*(W[7] - W[15]);
+      vx =     p1*(W[8] - W[0]) + p2*(W[10] - W[2])
+             + Q1*((1-u)*W[12] + u*W[4]) + Q2*((1-u)*W[14] + u*W[6]);
+      vy = 1 + p1*(W[9] - W[1]) + p2*(W[11] - W[3])
+             + Q1*((1-u)*W[13] + u*W[5]) + Q2*((1-u)*W[15] + u*W[7]);
       if (ux*vy - uy*vx < 0.08) return false;
     }
     return true;
@@ -1583,7 +1606,7 @@
 
   function qBent(W){
     if (!W) return false;
-    for (var i = 0; i < 8; i++) if (W[i]) return true;
+    for (var i = 0; i < W.length; i++) if (W[i]) return true;
     return false;
   }
 
@@ -1761,23 +1784,23 @@
     var s = sd.data, d = od.data;
     var n0=M[0], n1=M[1], n2=M[2], n3=M[3], n4=M[4], n5=M[5], n6=M[6], n7=M[7], n8=M[8];
     var xm = rw - 1, ym = rh - 1, i = 0, x, y, u, v, w, uu, vv;
-    var au, av = 0, wu = 0, wv = 0, pu, pv;
+    var p1, p2, q1 = 0, q2 = 0, a1u = 0, a1v = 0, a2u = 0, a2v = 0, pu, pv;
     var xa, ya, xb, yb, gx, gy, pa, pb, pc, pd, w00, w10, w01, w11, a0, a1, a2, a3, aa, f;
 
     for (y = 0; y < oh; y++){
       vv = (y + 0.5) / oh;
       /* the part of the bend that only depends on the row is worked out once */
       if (W){
-        av = 2*vv*(1-vv);
-        wu = (1-vv)*W[0] + vv*W[4];
-        wv = (1-vv)*W[1] + vv*W[5];
+        q1 = qB1(vv); q2 = qB2(vv);
+        a1u = (1-vv)*W[0] + vv*W[8];  a1v = (1-vv)*W[1] + vv*W[9];
+        a2u = (1-vv)*W[2] + vv*W[10]; a2v = (1-vv)*W[3] + vv*W[11];
       }
       for (x = 0; x < ow; x++){
         uu = (x + 0.5) / ow;
         if (W){
-          au = 2*uu*(1-uu);
-          pu = uu + au*wu + av*((1-uu)*W[6] + uu*W[2]);
-          pv = vv + au*wv + av*((1-uu)*W[7] + uu*W[3]);
+          p1 = qB1(uu); p2 = qB2(uu);
+          pu = uu + p1*a1u + p2*a2u + q1*((1-uu)*W[12] + uu*W[4]) + q2*((1-uu)*W[14] + uu*W[6]);
+          pv = vv + p1*a1v + p2*a2v + q1*((1-uu)*W[13] + uu*W[5]) + q2*((1-uu)*W[15] + uu*W[7]);
         } else { pu = uu; pv = vv; }
         w = n6*pu + n7*pv + n8;
         /* the half pixel comes back off: a source pixel is a square, and its
@@ -2520,6 +2543,7 @@
      which is what makes a page whose edge sits a little off a single drag
      instead of two. Held in display pixels, the way fx and fy are. */
   var cQuad = null, qOn = false, qCurve = false, cWarp = null, qHold = -1, qRaf = 0;
+  var qAim = null;      /* the spot under the finger, in the box's own pixels */
   var cLens = 0;      /* this photo's lens, in its own pixels */
   var quadBox = $("quad"), quadSvg = $("quadSvg"), loupe = $("loupe"), loupeCv = $("loupeCv");
   var LOUPE = 104, LZOOM = 2.6;
@@ -2833,19 +2857,59 @@
     return true;
   }
 
-  var Q_MID = [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]];
+  /* Pulling an edge means moving the two controls it has, and there is one
+     least way to do it: share the pull between them by how much each has to
+     say at that point along the edge. Pulled at the middle they move together
+     and the edge bows evenly — which is the whole of what a page usually needs,
+     and what the handle in the middle of the edge does. Pulled nearer one end
+     that end moves more, and the edge takes the lopsided shape a page has as it
+     rolls off a spine. So the two controls never have to be counted or chosen:
+     the edge is simply grabbed where it is wrong. */
+  function bendPull(w0, e, t, dx, dy){
+    /* the share each control takes is its own say at that point, cubed. Plain
+       shares would be the least the pair can move, but they make one pull undo
+       a good part of the last one, so settling a lopsided edge by hand takes
+       several passes. Cubing them keeps the pull local — the near control does
+       most of the work — while the arithmetic still lands the curve exactly
+       under the finger, and a pull at the middle still splits evenly, which is
+       what keeps an ordinary bow symmetric. */
+    var g1 = qB1(t), g2 = qB2(t);
+    var a1 = g1*g1*g1, a2 = g2*g2*g2, s = a1*g1 + a2*g2;
+    if (!(s > 0)) return null;
+    var w = w0.slice(0);
+    w[e*4]     = w0[e*4]     + dx*a1/s;
+    w[e*4 + 1] = w0[e*4 + 1] + dy*a1/s;
+    w[e*4 + 2] = w0[e*4 + 2] + dx*a2/s;
+    w[e*4 + 3] = w0[e*4 + 3] + dy*a2/s;
+    return w;
+  }
 
   /* a bend pushed past folding is walked back the same way a corner is: to the
-     furthest pull it can still hold, so the handle slides against the limit
-     rather than stopping dead under a finger that is still moving */
-  function bendSlide(w0, w1, k){
-    var lo = 0, hi = 1, best = null, w, t, i;
+     furthest pull it can still hold, so it slides against the limit rather
+     than stopping dead under a finger that is still moving */
+  function bendSlide(w0, e, t, dx, dy){
+    var lo = 0, hi = 1, best = null, w, k, i;
     for (i = 0; i < 12; i++){
-      t = (lo + hi) / 2;
-      w = w0.slice(0);
-      w[k*2]     = w0[k*2]     + (w1[k*2]     - w0[k*2])     * t;
-      w[k*2 + 1] = w0[k*2 + 1] + (w1[k*2 + 1] - w0[k*2 + 1]) * t;
-      if (qBendOK(w)){ best = w; lo = t; } else hi = t;
+      k = (lo + hi) / 2;
+      w = bendPull(w0, e, t, dx*k, dy*k);
+      if (w && qBendOK(w)){ best = w; lo = k; } else hi = k;
+    }
+    return best;
+  }
+
+  /* which edge is under the finger, and how far along it. The boundary is
+     walked rather than solved, because a curve under a perspective has no
+     tidy nearest-point to solve for. */
+  function bendNear(dq, W, x, y){
+    var m = qMap(dq), best = null, e, i, t, p, d;
+    if (!m) return null;
+    for (e = 0; e < 4; e++){
+      for (i = 0; i <= 24; i++){
+        t = i / 24;
+        p = qEdgeAt(m, W, e, t);
+        d = (p.x - x)*(p.x - x) + (p.y - y)*(p.y - y);
+        if (!best || d < best.d) best = { e: e, t: t, d: d, x: p.x, y: p.y };
+      }
     }
     return best;
   }
@@ -2934,7 +2998,7 @@
      only Reset does that. */
   function quadOn(on, curve){
     if (on && !cQuad) cQuad = quadFromFrame();
-    if (on && !cWarp) cWarp = [0,0,0,0,0,0,0,0];
+    if (on && !cWarp) cWarp = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
     if (!on) loupeHide();
     qOn = on;
     qCurve = !!(on && curve);
@@ -2950,9 +3014,53 @@
     if (on) layoutQuad(); else layoutFrame();
   }
 
+  /* one bend, however it was started: from the handle in the middle of an edge
+     or from a grab further along it. The finger is on the glass and the bend is
+     described inside the unit square, so the perspective is undone to carry the
+     pull across. */
+  function bendDrag(e, t, w0, box, p){
+    var dq = quadView(), Hi = mInv(qMap(dq));
+    if (Hi){
+      var m = qMap(dq);
+      var now = qEdgeAt(m, w0, e, t);
+      var a = mAt(Hi, now.x, now.y);
+      var b = mAt(Hi, Math.max(0, Math.min(dispW, p.x - box.left)),
+                      Math.max(0, Math.min(dispH, p.y - box.top)));
+      var w = bendPull(w0, e, t, b.x - a.x, b.y - a.y);
+      if (w && !qBendOK(w)) w = bendSlide(w0, e, t, b.x - a.x, b.y - a.y);
+      if (w){ cWarp = w; layoutQuad(); }
+    }
+    qAim = { x: p.x - box.left, y: p.y - box.top };
+    loupeTick();
+  }
+
+  /* the edge itself is grabbable, anywhere along it, so the second control each
+     edge has never needs a control of its own on screen */
+  function bendGrab(ev){
+    if (!qCurve || !cQuad || !cWarp) return;
+    var p = pt(ev), box = cropBox.getBoundingClientRect();
+    var x = p.x - box.left, y = p.y - box.top;
+    var near = bendNear(quadView(), cWarp, x, y);
+    if (!near || Math.sqrt(near.d) > 26) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var w0 = cWarp.slice(0), e = near.e, t = near.t;
+    qHold = 4 + e; qAim = { x: x, y: y };
+    quadBox.classList.add("pulling");
+    loupeTick();
+    attach(function(mv){
+      mv.preventDefault();
+      bendDrag(e, t, w0, box, pt(mv));
+    }, function(){
+      quadBox.classList.remove("pulling");
+      loupeHide();
+    });
+  }
+  quadBox.addEventListener("touchstart", bendGrab, { passive: false });
+  quadBox.addEventListener("mousedown", bendGrab);
+
   function loupeHide(){
     if (qRaf){ cancelAnimationFrame(qRaf); qRaf = 0; }
-    qHold = -1;
+    qHold = -1; qAim = null;
     loupe.classList.add("hidden");
   }
 
@@ -2965,7 +3073,7 @@
 
   function loupeDraw(){
     if (qHold < 0 || !cQuad || !cBmp) return;
-    var p = quadPoint(quadView(), qHold);
+    var p = qAim || quadPoint(quadView(), qHold);
     var dpr = Math.min(window.devicePixelRatio || 1, 3);
     var L = Math.max(1, Math.round(LOUPE * dpr));
     if (loupeCv.width !== L){ loupeCv.width = L; loupeCv.height = L; }
@@ -3133,37 +3241,20 @@
       var n = parseInt(g.getAttribute("data-q"), 10);
       var bending = qCurve && n >= 4;
       var p0 = pt(e), s0 = quadAt(p0.x, p0.y), q0 = cQuad.slice(0);
-      var w0 = cWarp.slice(0), mid = Q_MID[n - 4] || [0, 0];
+      var w0 = cWarp.slice(0);
       /* a corner is dragged by how far the finger travelled, so where the box
          happens to sit on the page never comes into it. A bend is different: it
          is set from where the finger actually is, so the box's own corner has to
          be taken off first, or the shape is read against the whole screen. */
       var box = cropBox.getBoundingClientRect();
       var mv = n < 4 ? [n] : [n - 4, (n - 3) % 4];
-      qHold = n;
+      qHold = n; qAim = null;
       g.classList.add("held");
       loupeTick();
       attach(function(ev){
         ev.preventDefault();
         var p = pt(ev), i, j;
-        if (bending){
-          /* the top of the curve goes where the finger is. The finger is on the
-             glass and the bend is described inside the unit square, so the
-             perspective is undone to carry it across; the control itself sits
-             twice as far out as the top of the curve it makes. */
-          var Hi = mInv(qMap(quadView()));
-          if (Hi){
-            var tu = mAt(Hi, Math.max(0, Math.min(dispW, p.x - box.left)),
-                             Math.max(0, Math.min(dispH, p.y - box.top)));
-            var w = w0.slice(0);
-            w[(n - 4) * 2]     = 2 * (tu.x - mid[0]);
-            w[(n - 4) * 2 + 1] = 2 * (tu.y - mid[1]);
-            if (!qBendOK(w)) w = bendSlide(w0, w, n - 4);
-            if (w){ cWarp = w; layoutQuad(); }
-          }
-          loupeTick();
-          return;
-        }
+        if (bending){ bendDrag(n - 4, 0.5, w0, box, p); return; }
         /* the finger's travel is turned into travel across the photo, so a
            tilted or turned view moves the point the way the eye expects */
         var sp = quadAt(p.x, p.y), q = q0.slice(0);
