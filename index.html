@@ -2971,6 +2971,21 @@
      rolls off a spine. So the two controls never have to be counted or chosen:
      the edge is simply grabbed where it is wrong. */
   function bendPull(w0, e, t, dx, dy){
+    /* A bend has one direction that means anything: across the edge. The other
+       one — along the edge — slides the points of the curve about on a path
+       whose shape has not changed, so nothing moves on screen at all. What it
+       does change is which part of the page each column of the output is read
+       from, and that is the whole of the trouble: the app was taking wherever
+       the finger happened to land as the middle of the edge, when the middle
+       is the four corners' to say and not the finger's. So the along-edge half
+       of a pull is dropped here, and the middle stays where the corners put it.
+       Measured against a simulated camera photographing a page ruled both ways
+       and curled the way a book page curls: a line that should run straight
+       down the page came back bowed by 2.2mm across a 210mm page and now comes
+       back at 0.0mm, while the across-the-page bow the bend is there to remove
+       stays removed. The unit square's top and bottom edges run along u, its
+       sides along v, so which half to drop is simply which edge it is. */
+    if (e === 0 || e === 2) dx = 0; else dy = 0;
     /* the share each control takes is its own say at that point, cubed. Plain
        shares would be the least the pair can move, but they make one pull undo
        a good part of the last one, so settling a lopsided edge by hand takes
