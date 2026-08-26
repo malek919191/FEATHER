@@ -398,7 +398,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.6</span>
+      <span class="ver">v1.21.7</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -1573,50 +1573,115 @@
      the square back untouched, so a straight-edged crop stays exactly the crop
      it was before any of this existed.
 
-     W holds the four controls, one per edge — top, right, bottom, left — as
-     offsets from the middle of that edge. Each edge is then the quadratic
-     curve through its two corners and its own control, and the corners
-     themselves never move. */
-  /* the two humps of a cubic edge, and their slopes. One control per edge
-     could only bow it evenly; two let the bend sit nearer one end than the
-     other, which is the shape a page takes as it rolls off a spine. Both at
-     rest still give the straight edge back exactly. */
-  function qB1(t){ return 3*t*(1-t)*(1-t); }
-  function qB2(t){ return 3*t*t*(1-t); }
-  function qB1d(t){ return 3*(1-t)*(1-3*t); }
-  function qB2d(t){ return 3*t*(2-3*t); }
+     W holds the controls of the four edges — top, right, bottom, left — as
+     offsets from where the straight edge would otherwise have run, and the
+     corners themselves never move. */
+  /* ---- a row of controls along one edge ----------------------------------
+     An edge used to be one cubic with two controls, and that was the whole of
+     the trouble: both of them are heard along the entire edge, so bending one
+     half of it moved the other half, and the middle with it. Settling a page
+     that bows unevenly then went in circles — every correction spoiled the
+     correction before it, and the only answer to that was more corrections.
 
-  /* W holds sixteen numbers: top, right, bottom and left, two controls each */
+     So the edge carries a row of controls instead, and each one is heard only
+     in its own neighbourhood: a uniform cubic B-spline, where a control reaches
+     two knots either side of itself and not a step further. Bend one half of an
+     edge and the other half does not move — not a little, none.
+
+     Twenty-four controls to an edge, twelve to each half. The knots are spaced
+     so the first and the last sit two knots inside the corners, which is what
+     leaves every control silent at the corners themselves: where the corners
+     are is the four points' to say, and no bend may ever move one. Every
+     control at rest still gives the square back untouched, so an edge nobody
+     has bent is arithmetically the straight edge it always was. */
+  var BEND_N = 24;                 /* controls to an edge */
+  var BEND_K = BEND_N + 3;         /* knots across it, corners included */
+  var BEND_H = 1 / BEND_K;         /* one knot's worth of the edge */
+  var BEND_R = 1 / 12;             /* how far along the edge one pull is felt */
+
+  function bendZero(){
+    var w = [], i;
+    for (i = 0; i < BEND_N * 8; i++) w[i] = 0;
+    return w;
+  }
+
+  /* the four controls that reach a point on an edge, and how loudly each is
+     heard there. They are written into an array the caller keeps rather than
+     handed back, because the pixel loop asks millions of times and an object
+     each time is a collection each time. o[0] names the first of the four;
+     o[1] to o[4] are their say, and no other control has any. */
+  function bAt(t, o){
+    var z = t * BEND_K - 2, j = Math.floor(z), s = z - j;
+    var s2 = s*s, s3 = s2*s, r = 1 - s;
+    o[0] = j - 1;
+    o[1] = r*r*r / 6;
+    o[2] = (3*s3 - 6*s2 + 4) / 6;
+    o[3] = (-3*s3 + 3*s2 + 3*s + 1) / 6;
+    o[4] = s3 / 6;
+  }
+
+  /* the same four, differentiated along the edge — what the fold test needs */
+  function bDt(t, o){
+    var z = t * BEND_K - 2, j = Math.floor(z), s = z - j;
+    var s2 = s*s, r = 1 - s, k = BEND_K / 2;
+    o[0] = j - 1;
+    o[1] = -r*r * k;
+    o[2] = (3*s2 - 4*s) * k;
+    o[3] = (-3*s2 + 2*s + 1) * k;
+    o[4] = s2 * k;
+  }
+  var bU = [0,0,0,0,0], bV = [0,0,0,0,0], bUd = [0,0,0,0,0], bVd = [0,0,0,0,0];
+
+  /* control k of edge e, and nothing at all where the edge has no such
+     control — which is what lets the controls nearest a corner simply run out
+     rather than needing a case of their own */
+  function bC(W, n, e, k, c){
+    return (k < 0 || k >= n) ? 0 : W[(e*n + k)*2 + c];
+  }
+
+  /* W holds the four edges in the order top, right, bottom, left, each with
+     BEND_N controls and each control a pair. The top and the bottom are still
+     blended across v and the two sides across u, exactly as they always were;
+     only the edge itself has changed, from one cubic with two controls into a
+     row of controls that each speak locally. */
   function qBend(W, u, v){
-    var p1 = qB1(u), p2 = qB2(u), q1 = qB1(v), q2 = qB2(v);
-    return {
-      u: u + p1*((1-v)*W[0] + v*W[8])  + p2*((1-v)*W[2]  + v*W[10])
-           + q1*((1-u)*W[12] + u*W[4]) + q2*((1-u)*W[14] + u*W[6]),
-      v: v + p1*((1-v)*W[1] + v*W[9])  + p2*((1-v)*W[3]  + v*W[11])
-           + q1*((1-u)*W[13] + u*W[5]) + q2*((1-u)*W[15] + u*W[7])
-    };
+    var n = W.length / 8, i, k, w, du = 0, dv = 0;
+    bAt(u, bU); bAt(v, bV);
+    for (i = 1; i <= 4; i++){
+      k = bU[0] + i - 1; w = bU[i];
+      du += w * ((1-v)*bC(W,n,0,k,0) + v*bC(W,n,2,k,0));
+      dv += w * ((1-v)*bC(W,n,0,k,1) + v*bC(W,n,2,k,1));
+      k = bV[0] + i - 1; w = bV[i];
+      du += w * ((1-u)*bC(W,n,3,k,0) + u*bC(W,n,1,k,0));
+      dv += w * ((1-u)*bC(W,n,3,k,1) + u*bC(W,n,1,k,1));
+    }
+    return { u: u + du, v: v + dv };
   }
 
   /* a bend pushed far enough folds the map onto itself, and a folded map has no
      straightening in it — the same objection a crossed-over quadrilateral gets.
      The determinant of the Jacobian turning negative anywhere is exactly that
-     fold, so it is sampled over the square and refused. The limit sits far past
-     anything a page asks for: a page needs about a fifth, and folding does not
-     begin until a whole one. */
+     fold, so it is sampled over the square and refused. A row of local controls
+     can put a fold in a smaller place than two controls ever could, so the
+     square is now walked finely enough to find one. */
   function qBendOK(W){
-    var i, j, u, v, p1, p2, q1, q2, P1, P2, Q1, Q2, ux, uy, vx, vy;
-    for (i = 0; i <= 8; i++) for (j = 0; j <= 8; j++){
-      u = i / 8; v = j / 8;
-      p1 = qB1(u); p2 = qB2(u); q1 = qB1(v); q2 = qB2(v);
-      P1 = qB1d(u); P2 = qB2d(u); Q1 = qB1d(v); Q2 = qB2d(v);
-      ux = 1 + P1*((1-v)*W[0] + v*W[8]) + P2*((1-v)*W[2] + v*W[10])
-             + q1*(W[4] - W[12]) + q2*(W[6] - W[14]);
-      uy =     P1*((1-v)*W[1] + v*W[9]) + P2*((1-v)*W[3] + v*W[11])
-             + q1*(W[5] - W[13]) + q2*(W[7] - W[15]);
-      vx =     p1*(W[8] - W[0]) + p2*(W[10] - W[2])
-             + Q1*((1-u)*W[12] + u*W[4]) + Q2*((1-u)*W[14] + u*W[6]);
-      vy = 1 + p1*(W[9] - W[1]) + p2*(W[11] - W[3])
-             + Q1*((1-u)*W[13] + u*W[5]) + Q2*((1-u)*W[15] + u*W[7]);
+    var n = W.length / 8, G = 20, i, j, u, v, ii, k, w, wd, ux, uy, vx, vy;
+    for (i = 0; i <= G; i++) for (j = 0; j <= G; j++){
+      u = i / G; v = j / G;
+      bAt(u, bU); bAt(v, bV); bDt(u, bUd); bDt(v, bVd);
+      ux = 1; uy = 0; vx = 0; vy = 1;
+      for (ii = 1; ii <= 4; ii++){
+        k = bU[0] + ii - 1; w = bU[ii]; wd = bUd[ii];
+        ux += wd * ((1-v)*bC(W,n,0,k,0) + v*bC(W,n,2,k,0));
+        uy += wd * ((1-v)*bC(W,n,0,k,1) + v*bC(W,n,2,k,1));
+        vx += w  * (bC(W,n,2,k,0) - bC(W,n,0,k,0));
+        vy += w  * (bC(W,n,2,k,1) - bC(W,n,0,k,1));
+        k = bV[0] + ii - 1; w = bV[ii]; wd = bVd[ii];
+        ux += w  * (bC(W,n,1,k,0) - bC(W,n,3,k,0));
+        uy += w  * (bC(W,n,1,k,1) - bC(W,n,3,k,1));
+        vx += wd * ((1-u)*bC(W,n,3,k,0) + u*bC(W,n,1,k,0));
+        vy += wd * ((1-u)*bC(W,n,3,k,1) + u*bC(W,n,1,k,1));
+      }
       if (ux*vy - uy*vx < 0.08) return false;
     }
     return true;
@@ -1638,7 +1703,8 @@
      square back untouched — so everything downstream is unchanged and a shape
      with nothing moved is arithmetically the crop it always was. */
   /* the two halves of a kinked edge. One control to an edge, because one
-     corner is one corner; the bend needs two because a bow can be lopsided. */
+     corner is one corner — where a bend needs a whole row of them, since the
+     shape of a curve is a different question at every point along it. */
   function qK(t){ return t < 0.5 ? 2*t : 2*(1-t); }
 
   /* K holds eight numbers: top, right, bottom and left, one corner each */
@@ -1650,9 +1716,10 @@
     };
   }
 
-  /* One value carries either, and its length says which: sixteen numbers is a
-     bend — two controls to an edge, and the edges curve — and eight is a
-     corner on each edge. Nothing at all is the plain straight-edged crop.
+  /* One value carries either, and its length says which: eight numbers is a
+     corner on each edge, and anything longer is a bend — a row of controls to
+     an edge, and the edges curve. Nothing at all is the plain straight-edged
+     crop.
      Holding them the same way is what lets the size, the proportions, the
      validity checks and the whole of cropQuad serve both without branching. */
   function qDisp(D, u, v){
@@ -1771,7 +1838,7 @@
     if (!qBent(W)) return qSize(q);
     var H = qMap(q);
     if (!H) return qSize(q);
-    var N = 16, len = [0, 0, 0, 0], e, i, p, prev, dx, dy;
+    var N = 192, len = [0, 0, 0, 0], e, i, p, prev, dx, dy;
     for (e = 0; e < 4; e++){
       prev = null;
       for (i = 0; i <= N; i++){
@@ -1833,8 +1900,8 @@
     var lo = { x: Infinity, y: Infinity }, hi = { x: -Infinity, y: -Infinity }, ci, ce, cp;
     if (W){
       /* a bent edge bulges past the corners, so the boundary is walked */
-      for (ce = 0; ce < 4; ce++) for (ci = 0; ci <= 16; ci++){
-        cp = qEdgeAt(M, W, ce, ci / 16);
+      for (ce = 0; ce < 4; ce++) for (ci = 0; ci <= 192; ci++){
+        cp = qEdgeAt(M, W, ce, ci / 192);
         if (cp.x < lo.x) lo.x = cp.x;
         if (cp.y < lo.y) lo.y = cp.y;
         if (cp.x > hi.x) hi.x = cp.x;
@@ -1862,11 +1929,35 @@
     var s = sd.data, d = od.data;
     var n0=M[0], n1=M[1], n2=M[2], n3=M[3], n4=M[4], n5=M[5], n6=M[6], n7=M[7], n8=M[8];
     var xm = rw - 1, ym = rh - 1, i = 0, x, y, u, v, w, uu, vv;
-    var p1, p2, q1 = 0, q2 = 0, a1u = 0, a1v = 0, a2u = 0, a2v = 0, pu, pv;
+    var p1, q1 = 0, a1u = 0, a1v = 0, pu, pv;
     var xa, ya, xb, yb, gx, gy, pa, pb, pc, pd, w00, w10, w01, w11, a0, a1, a2, a3, aa, f;
 
     /* which of the two the edges are doing, asked once rather than per pixel */
     var Wk = W && W.length === 8;
+    /* An edge under Curve has a row of controls along it, and reading them per
+       pixel would cost more than the whole bend is worth. Two things save it.
+       What a column of pixels asks of the top and bottom edges never changes
+       from one row to the next, so it is worked out once for the whole image,
+       one column at a time. And what a row asks comes down to four numbers for
+       the two sides, and one blended control apiece for the top and the bottom.
+       Three empty places at each end of those mean the four controls a pixel
+       reads are always there to read, with no bounds test in the loop. Between
+       them the twenty-four controls cost less per pixel than the two did. */
+    var wn = W ? W.length / 8 : 0, bi, bk, bw, bo, Au = null, Av = null;
+    var Lu = 0, Lv = 0, Ru = 0, Rv = 0;
+    var Cb = null, C0 = null, C1 = null, C2 = null, C3 = null;
+    if (W && !Wk){
+      Au = []; Av = [];
+      for (bk = 0; bk < wn + 7; bk++){ Au[bk] = 0; Av[bk] = 0; }
+      Cb = new Int32Array(ow);
+      C0 = new Float64Array(ow); C1 = new Float64Array(ow);
+      C2 = new Float64Array(ow); C3 = new Float64Array(ow);
+      for (bk = 0; bk < ow; bk++){
+        bAt((bk + 0.5) / ow, bU);
+        Cb[bk] = bU[0] + 3;
+        C0[bk] = bU[1]; C1[bk] = bU[2]; C2[bk] = bU[3]; C3[bk] = bU[4];
+      }
+    }
 
     for (y = 0; y < oh; y++){
       vv = (y + 0.5) / oh;
@@ -1875,9 +1966,17 @@
         q1 = qK(vv);
         a1u = (1-vv)*W[0] + vv*W[4]; a1v = (1-vv)*W[1] + vv*W[5];
       } else if (W){
-        q1 = qB1(vv); q2 = qB2(vv);
-        a1u = (1-vv)*W[0] + vv*W[8];  a1v = (1-vv)*W[1] + vv*W[9];
-        a2u = (1-vv)*W[2] + vv*W[10]; a2v = (1-vv)*W[3] + vv*W[11];
+        bAt(vv, bV);
+        Lu = 0; Lv = 0; Ru = 0; Rv = 0;
+        for (bi = 1; bi <= 4; bi++){
+          bk = bV[0] + bi - 1; bw = bV[bi];
+          Lu += bw * bC(W, wn, 3, bk, 0); Lv += bw * bC(W, wn, 3, bk, 1);
+          Ru += bw * bC(W, wn, 1, bk, 0); Rv += bw * bC(W, wn, 1, bk, 1);
+        }
+        for (bk = 0; bk < wn; bk++){
+          Au[bk+3] = (1-vv)*W[bk*2]   + vv*W[(2*wn + bk)*2];
+          Av[bk+3] = (1-vv)*W[bk*2+1] + vv*W[(2*wn + bk)*2+1];
+        }
       }
       for (x = 0; x < ow; x++){
         uu = (x + 0.5) / ow;
@@ -1886,9 +1985,11 @@
           pu = uu + p1*a1u + q1*((1-uu)*W[6] + uu*W[2]);
           pv = vv + p1*a1v + q1*((1-uu)*W[7] + uu*W[3]);
         } else if (W){
-          p1 = qB1(uu); p2 = qB2(uu);
-          pu = uu + p1*a1u + p2*a2u + q1*((1-uu)*W[12] + uu*W[4]) + q2*((1-uu)*W[14] + uu*W[6]);
-          pv = vv + p1*a1v + p2*a2v + q1*((1-uu)*W[13] + uu*W[5]) + q2*((1-uu)*W[15] + uu*W[7]);
+          bo = Cb[x];
+          pu = uu + C0[x]*Au[bo] + C1[x]*Au[bo+1] + C2[x]*Au[bo+2] + C3[x]*Au[bo+3]
+                  + (1-uu)*Lu + uu*Ru;
+          pv = vv + C0[x]*Av[bo] + C1[x]*Av[bo+1] + C2[x]*Av[bo+2] + C3[x]*Av[bo+3]
+                  + (1-uu)*Lv + uu*Rv;
         } else { pu = uu; pv = vv; }
         w = n6*pu + n7*pv + n8;
         /* the half pixel comes back off: a source pixel is a square, and its
@@ -3055,14 +3156,12 @@
     return true;
   }
 
-  /* Pulling an edge means moving the two controls it has, and there is one
-     least way to do it: share the pull between them by how much each has to
-     say at that point along the edge. Pulled at the middle they move together
-     and the edge bows evenly — which is the whole of what a page usually needs,
-     and what the handle in the middle of the edge does. Pulled nearer one end
-     that end moves more, and the edge takes the lopsided shape a page has as it
-     rolls off a spine. So the two controls never have to be counted or chosen:
-     the edge is simply grabbed where it is wrong. */
+  /* Pulling an edge means moving the controls near where it was grabbed, and
+     only those. Nothing about that has to be counted or chosen by hand: the
+     edge is simply grabbed where it is wrong, and the controls within reach of
+     the finger answer in proportion to how near they are. Grabbed at its middle
+     — which is where the handle sits — the edge bows evenly about that point;
+     grabbed nearer one end, that end bends and the far end stays put. */
   function bendPull(w0, e, t, dx, dy){
     /* A bend has one direction that means anything: across the edge. The other
        one — along the edge — slides the points of the curve about on a path
@@ -3079,21 +3178,34 @@
        stays removed. The unit square's top and bottom edges run along u, its
        sides along v, so which half to drop is simply which edge it is. */
     if (e === 0 || e === 2) dx = 0; else dy = 0;
-    /* the share each control takes is its own say at that point, cubed. Plain
-       shares would be the least the pair can move, but they make one pull undo
-       a good part of the last one, so settling a lopsided edge by hand takes
-       several passes. Cubing them keeps the pull local — the near control does
-       most of the work — while the arithmetic still lands the curve exactly
-       under the finger, and a pull at the middle still splits evenly, which is
-       what keeps an ordinary bow symmetric. */
-    var g1 = qB1(t), g2 = qB2(t);
-    var a1 = g1*g1*g1, a2 = g2*g2*g2, s = a1*g1 + a2*g2;
+    /* How far along the edge one pull is felt: a twelfth of it either side of
+       the finger, which with the controls' own reach comes to about a sixth of
+       the edge each way. A pull anywhere in one half therefore leaves the other
+       half exactly where it was, and even a quarter of an edge can be settled
+       without disturbing the quarter beside it — which is the whole reason
+       there is a row of controls and not a pair. Inside that reach each
+       control's share falls away smoothly to nothing at the rim, so the edge
+       takes a rounded bump and never a dent, and the shares are then divided by
+       what they add up to at the point pulled, which is what lands the curve
+       exactly under the finger however many controls answered. */
+    var n = w0.length / 8, a = [], i, k, r, s = 0;
+    for (k = 0; k < n; k++){
+      r = ((k + 2) * BEND_H - t) / BEND_R;
+      a[k] = (r > -1 && r < 1) ? (1 - r*r) * (1 - r*r) : 0;
+    }
+    bAt(t, bU);
+    for (i = 1; i <= 4; i++){
+      k = bU[0] + i - 1;
+      if (k >= 0 && k < n) s += a[k] * bU[i];
+    }
     if (!(s > 0)) return null;
-    var w = w0.slice(0);
-    w[e*4]     = w0[e*4]     + dx*a1/s;
-    w[e*4 + 1] = w0[e*4 + 1] + dy*a1/s;
-    w[e*4 + 2] = w0[e*4 + 2] + dx*a2/s;
-    w[e*4 + 3] = w0[e*4 + 3] + dy*a2/s;
+    var w = w0.slice(0), b;
+    for (k = 0; k < n; k++){
+      if (!a[k]) continue;
+      b = (e*n + k) * 2;
+      w[b]     = w0[b]     + dx * a[k] / s;
+      w[b + 1] = w0[b + 1] + dy * a[k] / s;
+    }
     return w;
   }
 
@@ -3135,8 +3247,8 @@
   function qBendIn(W, q){
     var m = qMap(q || cQuad), e, i, p;
     if (!m) return true;
-    for (e = 0; e < 4; e++) for (i = 0; i <= 16; i++){
-      p = qEdgeAt(m, W, e, i / 16);
+    for (e = 0; e < 4; e++) for (i = 0; i <= 192; i++){
+      p = qEdgeAt(m, W, e, i / 192);
       if (p.x < 0 || p.y < 0 || p.x > bw0 || p.y > bh0) return false;
     }
     return true;
@@ -3209,8 +3321,8 @@
     var m = qMap(dq), best = null, e, i, t, p, d;
     if (!m) return null;
     for (e = 0; e < 4; e++){
-      for (i = 0; i <= 24; i++){
-        t = i / 24;
+      for (i = 0; i <= 96; i++){
+        t = i / 96;
         p = qEdgeAt(m, W, e, t);
         d = (p.x - x)*(p.x - x) + (p.y - y)*(p.y - y);
         if (!best || d < best.d) best = { e: e, t: t, d: d, x: p.x, y: p.y };
@@ -3278,8 +3390,8 @@
     if (Hd){
       var walk = [[0, 0, 1], [1, 0, 1], [2, 1, 0], [3, 1, 0]], wk, ti, tt, pp;
       for (wk = 0; wk < 4; wk++){
-        for (ti = 0; ti <= 12; ti++){
-          tt = walk[wk][1] + (walk[wk][2] - walk[wk][1]) * (ti / 12);
+        for (ti = 0; ti <= 48; ti++){
+          tt = walk[wk][1] + (walk[wk][2] - walk[wk][1]) * (ti / 48);
           pp = qEdgeAt(Hd, W, walk[wk][0], tt);
           d += (d ? "L" : "M") + nn(pp.x) + "," + nn(pp.y);
         }
@@ -3297,14 +3409,14 @@
     var grid = "", u, gi, gt, gp, gb;
     if (Hd) for (i = 1; i < 3; i++){
       u = i / 3;
-      for (gi = 0; gi <= 12; gi++){
-        gt = gi / 12;
+      for (gi = 0; gi <= 32; gi++){
+        gt = gi / 32;
         gb = qDisp(W, u, gt);
         gp = mAt(Hd, gb.u, gb.v);
         grid += (gi ? "L" : "M") + nn(gp.x) + "," + nn(gp.y);
       }
-      for (gi = 0; gi <= 12; gi++){
-        gt = gi / 12;
+      for (gi = 0; gi <= 32; gi++){
+        gt = gi / 32;
         gb = qDisp(W, gt, u);
         gp = mAt(Hd, gb.u, gb.v);
         grid += (gi ? "L" : "M") + nn(gp.x) + "," + nn(gp.y);
@@ -3325,7 +3437,7 @@
      only Reset does that. */
   function quadOn(on, curve){
     if (on && (!cQuad || !qOwn)) cQuad = quadFromFrame();
-    if (on && !cWarp) cWarp = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    if (on && !cWarp) cWarp = bendZero();
     if (on && !cKink) cKink = [0,0,0,0,0,0,0,0];
     if (!on) loupeHide();
     qOn = on;
@@ -3397,8 +3509,9 @@
   }
 
   /* The edge itself is grabbable, anywhere along it, in both shapes. Under
-     Curve that pull bends it, and the second control each edge has never needs
-     a control of its own on screen. Under Custom the edge has nothing to bend,
+     Curve that pull bends it just where it was taken hold of, and the row of
+     controls behind that never shows on screen — eight handles is all there
+     ever is to grab. Under Custom the edge has nothing to bend,
      so the pull carries the whole edge — the two corners that hold it — which
      is exactly what its midpoint handle does, only without having to land on
      the dot. The dot is a small target on a page held at arm's length; the
