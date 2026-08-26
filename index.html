@@ -245,8 +245,20 @@
     padding:calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px)}
   #cropArea{flex:1;position:relative;display:flex;flex-direction:column;
     align-items:center;justify-content:center;min-height:0;gap:12px}
+  /* the box is a window onto the photo rather than the photo itself: two
+     fingers grow the photo inside it while the window keeps its size, so
+     nothing else on the screen shifts and the crop stays where it was put.
+     The photo is drawn at the window's own size and so never spills; what
+     spills is everything drawn over it, and that is cut off a little way
+     outside the window rather than exactly on it — a handle sitting on the
+     photo's own corner has always hung half over the edge, and still does. */
   #cropBox{position:relative;touch-action:none;line-height:0}
   #cropCanvas{display:block;border-radius:8px}
+  #cropClip{position:absolute;overflow:hidden;pointer-events:none}
+  /* everything drawn over the photo travels with it: the shade, the rectangle
+     and the four points are laid out in the photo's own view, and this layer
+     is what slides that view under the window */
+  #cropPan{position:absolute;pointer-events:auto}
   #cropSize{font-family:var(--mono);font-size:13px;font-weight:650;color:#DCE6EE;letter-spacing:.06em}
   .tiltWrap{width:100%;max-width:300px;display:flex;flex-direction:column;align-items:center}
   .ticks{align-self:stretch;display:flex;justify-content:space-between;
@@ -385,7 +397,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.20</span>
+      <span class="ver">v1.21</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -507,6 +519,8 @@
   <div id="cropArea">
     <div id="cropBox">
       <canvas id="cropCanvas"></canvas>
+      <div id="cropClip">
+      <div id="cropPan">
       <div id="shade">
         <div class="dim" id="dimT"></div><div class="dim" id="dimB"></div>
         <div class="dim" id="dimL"></div><div class="dim" id="dimR"></div>
@@ -526,6 +540,8 @@
         <div class="qg" data-q="2"></div><div class="qg" data-q="3"></div>
         <div class="qg mid" data-q="4"></div><div class="qg mid" data-q="5"></div>
         <div class="qg mid" data-q="6"></div><div class="qg mid" data-q="7"></div>
+      </div>
+      </div>
       </div>
       <div id="loupe" class="hidden"><canvas id="loupeCv"></canvas><i></i></div>
     </div>
@@ -2537,6 +2553,16 @@
   var cBmp = null, bw0 = 0, bh0 = 0;
   var cRot = 0, cFH = false, cFV = false, cFree = 0;
   var oW = 0, oH = 0, viewK = 1, dispW = 0, dispH = 0;
+  /* the window, and which part of the photo is behind it. viewK carries the
+     zoom, and viewK is the one number saying how large the photo is being
+     shown — so the crop's size, the travel of a finger across the photo and
+     the crop that is finally lifted are all already in the zoom's terms, and
+     nothing downstream has to learn that a zoom exists. */
+  var cropPan = $("cropPan"), cropClip = $("cropClip");
+  /* how far past the window the overlays may reach before they are cut off —
+     one handle's radius, so a handle on the photo's edge stays whole */
+  var VPAD = 18;
+  var fitK = 1, zoomK = 1, zMax = 4, panX = 0, panY = 0, viewW = 0, viewH = 0, vRaf = 0;
   var fx = 0, fy = 0, fw = 0, fh = 0;
   /* the four-point crop: the rectangle's own four corners, freed from each
      other, plus a midpoint on every edge that carries the whole edge at once —
@@ -2720,6 +2746,9 @@
     await lensRead(sourceFiles[idx]);
     cLens = lensPx(sourceFiles[idx], bw0, bh0);
 
+    /* the zoom is a way of looking and not part of the edit, so it is not
+       remembered: every photo opens showing the whole of itself */
+    zoomFit();
     paintEditor();
     if (e){
       fx = e.sx * viewK; fy = e.sy * viewK;
@@ -2739,26 +2768,83 @@
     cropper.classList.remove("hidden");
   }
 
+  /* back to the whole photo in the window, which is where the editor opens */
+  function zoomFit(){ zoomK = 1; panX = 0; panY = 0; }
+
+  /* the pan says which part of the photo the window is over, so it can never
+     walk past the photo's own edges */
+  function clampPan(){
+    panX = Math.max(0, Math.min(panX, dispW - viewW));
+    panY = Math.max(0, Math.min(panY, dispH - viewH));
+  }
+
+  /* The slack is given only on a side where the photo really ends. On a side
+     where it carries on past the window there is nothing at that edge to draw
+     whole, and the same slack would leave a stub of the crop's outline hanging
+     over the black beside the photo. */
+  function placeView(){
+    var l = panX > 0.5 ? 0 : VPAD, t = panY > 0.5 ? 0 : VPAD,
+        r = (dispW - panX - viewW) > 0.5 ? 0 : VPAD,
+        b = (dispH - panY - viewH) > 0.5 ? 0 : VPAD;
+    cropClip.style.left = -l + "px"; cropClip.style.top = -t + "px";
+    cropClip.style.right = -r + "px"; cropClip.style.bottom = -b + "px";
+    cropPan.style.left = (l - panX) + "px";
+    cropPan.style.top = (t - panY) + "px";
+  }
+
   function paintEditor(){
     var o = orientedSize(bw0, bh0, cRot);
     oW = o.w; oH = o.h;
 
     var availW = window.innerWidth - 20;
     var availH = window.innerHeight * 0.46;
-    viewK = Math.min(availW / oW, availH / oH);
-    dispW = Math.max(1, Math.round(oW * viewK));
-    dispH = Math.max(1, Math.round(oH * viewK));
+    fitK = Math.min(availW / oW, availH / oH);
+    /* four times the size the photo is shown at, or as far as one pixel of the
+       photo for one pixel of the screen — whichever of the two reaches further.
+       Past that there is nothing more in the file to look at. */
+    zMax = Math.max(4, 1 / fitK);
+    zoomK = Math.max(1, Math.min(zoomK, zMax));
+    viewK = fitK * zoomK;
 
+    /* not rounded, either of them: the window and the photo inside it are the
+       same rectangle at zoom 1, and a rounding between them would leave a hair
+       of white along an edge — and a crop pushed against that edge would come
+       back a pixel taller than the photo it was lifted from */
+    viewW = Math.max(1, oW * fitK);
+    viewH = Math.max(1, oH * fitK);
+    dispW = Math.max(1, oW * viewK);
+    dispH = Math.max(1, oH * viewK);
+
+    cropBox.style.width = viewW + "px";
+    cropBox.style.height = viewH + "px";
+    cropPan.style.width = dispW + "px";
+    cropPan.style.height = dispH + "px";
+    clampPan();
+    placeView();
+    drawView();
+  }
+
+  /* one draw per frame at most while a finger is moving the photo: a touchmove
+     fires faster than the screen refreshes and every draw reads the full photo */
+  function drawSoon(){
+    if (vRaf) return;
+    vRaf = requestAnimationFrame(function(){ vRaf = 0; drawView(); });
+  }
+
+  function drawView(){
+    if (!cBmp) return;
     var dpr = Math.min(window.devicePixelRatio || 1, 3);
-    var pw = Math.max(1, Math.round(dispW * dpr));
-    var ph = Math.max(1, Math.round(dispH * dpr));
-
-    cropCanvas.width = pw; cropCanvas.height = ph;
-    cropCanvas.style.width = dispW + "px";
-    cropCanvas.style.height = dispH + "px";
-    cropBox.style.width = dispW + "px";
-    cropBox.style.height = dispH + "px";
-
+    /* the backing store is whole device pixels — that is the one place a
+       rounding belongs, and it never reaches the geometry */
+    var pw = Math.max(1, Math.round(viewW * dpr));
+    var ph = Math.max(1, Math.round(viewH * dpr));
+    /* only ever the window is drawn, whatever the zoom: a canvas the size of a
+       photo magnified ten times would be hundreds of megabytes on a phone */
+    if (cropCanvas.width !== pw || cropCanvas.height !== ph){
+      cropCanvas.width = pw; cropCanvas.height = ph;
+      cropCanvas.style.width = viewW + "px";
+      cropCanvas.style.height = viewH + "px";
+    }
     var x = cropCanvas.getContext("2d", cmOK ? { colorSpace: "display-p3" } : undefined);
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.imageSmoothingEnabled = true;
@@ -2766,9 +2852,11 @@
     x.fillStyle = "#fff"; x.fillRect(0, 0, pw, ph);
     /* the very transform the crop is lifted through, in device pixels. There is
        only one of them, so the photo the four points are placed on and the photo
-       that comes out of the pipeline cannot drift apart. */
-    var m = qFwd(bw0, bh0, cRot, cFH, cFV, cFree), kx = pw / oW, ky = ph / oH;
-    x.setTransform(kx*m[0], ky*m[3], kx*m[1], ky*m[4], kx*m[2], ky*m[5]);
+       that comes out of the pipeline cannot drift apart. The zoom and the pan
+       ride on top of it: they are the window, and no part of the crop. */
+    var m = qFwd(bw0, bh0, cRot, cFH, cFV, cFree), k = viewK * dpr;
+    x.setTransform(k*m[0], k*m[3], k*m[1], k*m[4],
+                   k*m[2] - panX*dpr, k*m[5] - panY*dpr);
     /* the size is stated rather than left to the browser: a photo carrying an
        orientation tag can be handed over with its sides the other way round to
        the ones measured here, and then it lands in a corner of its own frame
@@ -3024,13 +3112,13 @@
       var m = qMap(dq);
       var now = qEdgeAt(m, w0, e, t);
       var a = mAt(Hi, now.x, now.y);
-      var b = mAt(Hi, Math.max(0, Math.min(dispW, p.x - box.left)),
-                      Math.max(0, Math.min(dispH, p.y - box.top)));
+      var b = mAt(Hi, Math.max(0, Math.min(dispW, p.x - box.left + panX)),
+                      Math.max(0, Math.min(dispH, p.y - box.top + panY)));
       var w = bendPull(w0, e, t, b.x - a.x, b.y - a.y);
       if (w && !qBendOK(w)) w = bendSlide(w0, e, t, b.x - a.x, b.y - a.y);
       if (w){ cWarp = w; layoutQuad(); }
     }
-    qAim = { x: p.x - box.left, y: p.y - box.top };
+    qAim = { x: p.x - box.left + panX, y: p.y - box.top + panY };
     loupeTick();
   }
 
@@ -3039,7 +3127,7 @@
   function bendGrab(ev){
     if (!qCurve || !cQuad || !cWarp) return;
     var p = pt(ev), box = cropBox.getBoundingClientRect();
-    var x = p.x - box.left, y = p.y - box.top;
+    var x = p.x - box.left + panX, y = p.y - box.top + panY;
     var near = bendNear(quadView(), cWarp, x, y);
     if (!near || Math.sqrt(near.d) > 26) return;
     ev.preventDefault(); ev.stopPropagation();
@@ -3084,16 +3172,22 @@
     if (x.imageSmoothingQuality) x.imageSmoothingQuality = "high";
     /* the photo through the very same transform again, only zoomed and shifted
        so the point under the finger sits in the middle of the glass */
-    var k = viewK * dpr * LZOOM;
+    /* the view itself may already be zoomed, so the ring adds what it still
+       can on top of that and no more than one pixel of the photo per pixel of
+       the screen — past that there is nothing further in the file to show */
+    var k = Math.min(viewK * LZOOM, Math.max(1, fitK * LZOOM)) * dpr;
     var m = mMul(mMul(mMul(mT(L/2, L/2), mS(k, k)), mT(-p.x / viewK, -p.y / viewK)),
                  qFwd(bw0, bh0, cRot, cFH, cFV, cFree));
     x.setTransform(m[0], m[3], m[1], m[4], m[2], m[5]);
     x.drawImage(cBmp, 0, 0, bw0, bh0);
     x.setTransform(1, 0, 0, 1, 0, 0);
     /* it rides above the finger, and drops below it near the top edge */
-    var lx = Math.max(0, Math.min(dispW - LOUPE, p.x - LOUPE / 2));
-    var ly = p.y - LOUPE - 24;
-    if (ly < 0) ly = Math.min(dispH - LOUPE, p.y + 24);
+    /* the ring hangs in the window rather than on the photo, so where the
+       photo has been dragged to comes off the point first */
+    var vx = p.x - panX, vy = p.y - panY;
+    var lx = Math.max(0, Math.min(viewW - LOUPE, vx - LOUPE / 2));
+    var ly = vy - LOUPE - 24;
+    if (ly < 0) ly = Math.min(viewH - LOUPE, vy + 24);
     loupe.style.left = nn(lx) + "px";
     loupe.style.top = nn(Math.max(0, ly)) + "px";
     loupe.classList.remove("hidden");
@@ -3117,6 +3211,9 @@
      somewhere else on the glass — there is nothing to move and nothing to lose */
   $("rotBtn").addEventListener("click", function(){
     cRot = (cRot + 90) % 360;
+    /* the turn re-frames the crop anyway, so the window comes back to the
+       whole photo rather than to a corner of a photo that has moved */
+    zoomFit();
     paintEditor(); resetFrame();
     layoutFrame(); if (qOn) layoutQuad();
   });
@@ -3157,8 +3254,10 @@
     $("flipV").setAttribute("aria-pressed", "false");
     $("tilt").value = 0;
     setRatioButtons(0);
-    /* Reset means all of it: the four points and the bend of their edges */
+    /* Reset means all of it: the four points, the bend of their edges, and
+       the zoom the photo was being looked at through */
     cQuad = null; cWarp = null;
+    zoomFit();
     quadOn(false, false);
     paintEditor(); resetFrame(); layoutFrame();
   });
@@ -3167,6 +3266,9 @@
     var t = e.touches ? e.touches[0] : e;
     return { x: t.clientX, y: t.clientY };
   }
+  /* the drag under way, if there is one. A second finger landing means a zoom
+     rather than a drag, and the first finger has to let go of what it had. */
+  var endDrag = null;
   function attach(move, done){
     var up = function(){
       document.removeEventListener("touchmove", move);
@@ -3174,6 +3276,7 @@
       document.removeEventListener("touchcancel", up);
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
+      endDrag = null;
       if (done) done();
     };
     document.addEventListener("touchmove", move, { passive: false });
@@ -3181,7 +3284,97 @@
     document.addEventListener("touchcancel", up);
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
+    endDrag = up;
   }
+
+  /* ---- two fingers on the photo ------------------------------------------
+     The zoom lives in the window and not in the crop. It moves viewK, the one
+     number saying how large the photo is being shown, and everything already
+     speaks in viewK: the four points are held in the photo's own pixels and so
+     do not move at all, and the rectangle, which is held in the pixels of the
+     view, is carried across by the same ratio. Both end up on exactly the
+     pixels of the photo they were put on, which is the whole point — a zoom is
+     a way of looking, never an edit. */
+  function twoGap(a, b){
+    var dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  /* sx, sy is where in the window the fingers are; cx, cy is the spot on the
+     photo they took hold of, which is what stays under them */
+  function zoomTo(k, sx, sy, cx, cy){
+    k = Math.max(1, Math.min(k, zMax));
+    var now = fitK * k, r = now / viewK;
+    if (r !== 1){ fx *= r; fy *= r; fw *= r; fh *= r; }
+    zoomK = k;
+    panX = cx * now - sx;
+    panY = cy * now - sy;
+    paintEditor();
+    layoutFrame();
+    if (qOn) layoutQuad();
+  }
+
+  var pinch = null;
+  function zoomStart(e){
+    if (!e.touches || e.touches.length !== 2) return;
+    e.preventDefault(); e.stopPropagation();
+    if (endDrag) endDrag();
+    loupeHide();
+    var box = cropBox.getBoundingClientRect();
+    var sx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - box.left;
+    var sy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - box.top;
+    var d = twoGap(e.touches[0], e.touches[1]);
+    pinch = d > 0 ? { d0: d, k0: zoomK, box: box,
+                      cx: (sx + panX) / viewK, cy: (sy + panY) / viewK } : null;
+  }
+
+  function zoomMove(e){
+    if (!pinch) return;
+    e.preventDefault();
+    if (e.touches.length < 2) return;
+    var sx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - pinch.box.left;
+    var sy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - pinch.box.top;
+    zoomTo(pinch.k0 * twoGap(e.touches[0], e.touches[1]) / pinch.d0,
+           sx, sy, pinch.cx, pinch.cy);
+  }
+
+  function zoomEnd(e){
+    if (pinch && (!e.touches || e.touches.length < 2)) pinch = null;
+  }
+
+  /* caught on the way down, so a second finger landing on the crop's own frame
+     or on one of its handles is a zoom all the same */
+  cropBox.addEventListener("touchstart", zoomStart, { passive: false, capture: true });
+  document.addEventListener("touchmove", zoomMove, { passive: false });
+  document.addEventListener("touchend", zoomEnd);
+  document.addEventListener("touchcancel", zoomEnd);
+
+  /* one finger on the photo, clear of the crop's own handles, moves the photo
+     under the window — and only while it is zoomed in, so at full size the
+     editor behaves exactly as it always did */
+  function panStart(e){
+    if (e.touches && e.touches.length > 1) return;
+    if (dispW <= viewW && dispH <= viewH) return;
+    if (e.target.closest("#frame") || e.target.closest(".qg")) return;
+    e.preventDefault();
+    var p0 = pt(e), x0 = panX, y0 = panY;
+    attach(function(ev){
+      ev.preventDefault();
+      var p = pt(ev);
+      panX = x0 - (p.x - p0.x);
+      panY = y0 - (p.y - p0.y);
+      clampPan(); placeView(); drawSoon();
+    });
+  }
+  cropBox.addEventListener("touchstart", panStart, { passive: false });
+  cropBox.addEventListener("mousedown", panStart);
+
+  /* iOS has a pinch of its own that would magnify the whole page underneath;
+     over the photo the gesture is the editor's, and it says so */
+  function eatGesture(e){ e.preventDefault(); }
+  cropBox.addEventListener("gesturestart", eatGesture);
+  cropBox.addEventListener("gesturechange", eatGesture);
+  cropBox.addEventListener("gestureend", eatGesture);
 
   function dragFrame(e){
     if (e.target.closest(".grip")) return;
@@ -3278,6 +3471,8 @@
 
   function closeEditor(){
     loupeHide();
+    pinch = null;
+    if (vRaf){ cancelAnimationFrame(vRaf); vRaf = 0; }
     cropper.classList.add("hidden");
     unlockPage();
     release(cBmp);
