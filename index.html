@@ -300,10 +300,11 @@
      whole edge at once. The outline is drawn as SVG over the photo, while the
      handles stay divs, so each touch target is far larger than the dot the eye
      is aiming with. */
-  #quad{position:absolute;inset:0;pointer-events:none}
-  /* while the edges can bend, the whole shape takes the finger, because the
-     edge itself is what is being grabbed and not only the dot on it */
-  #quad.bend{pointer-events:auto}
+  #quad{position:absolute;inset:0}
+  /* the whole shape takes the finger, because the edge itself is what is
+     grabbed and not only the dot sitting on it — the same in Custom, where a
+     grabbed edge travels, as in Curve, where it bends */
+  #quad{pointer-events:auto}
   #quad.pulling #quadLine{stroke-width:2.5}
   #quadSvg{position:absolute;inset:0;width:100%;height:100%}
   #quadShade{fill:rgba(10,16,22,.62)}
@@ -397,7 +398,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.1</span>
+      <span class="ver">v1.21.2</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -2976,17 +2977,36 @@
     return w;
   }
 
-  /* a bend pushed past folding is walked back the same way a corner is: to the
-     furthest pull it can still hold, so it slides against the limit rather
-     than stopping dead under a finger that is still moving */
+  /* A bend can push an edge clean off the photo, and out there is nothing to
+     read: the sampler clamps to the last row of pixels it has, so an output
+     area that fell outside comes back as that row smeared across it — the
+     blank streak down the side of a page. The bulge is therefore held inside
+     the photo exactly the way a fold is held out of it, and the edge slides
+     along that limit instead of crossing it. */
+  function qBendIn(W){
+    var m = qMap(cQuad), e, i, p;
+    if (!m) return true;
+    for (e = 0; e < 4; e++) for (i = 0; i <= 16; i++){
+      p = qEdgeAt(m, W, e, i / 16);
+      if (p.x < 0 || p.y < 0 || p.x > bw0 || p.y > bh0) return false;
+    }
+    return true;
+  }
+
+  /* the two things a bend has to be: not folded, and not off the photo */
+  function bendFit(W){ return qBendOK(W) && qBendIn(W); }
+
+  /* a bend pushed past either limit is walked back the same way a corner is:
+     to the furthest pull it can still hold, so it slides against the limit
+     rather than stopping dead under a finger that is still moving */
   function bendSlide(w0, e, t, dx, dy){
     var lo = 0, hi = 1, best = null, w, k, i;
     for (i = 0; i < 12; i++){
       k = (lo + hi) / 2;
       w = bendPull(w0, e, t, dx*k, dy*k);
-      if (w && qBendOK(w)){ best = w; lo = k; } else hi = k;
+      if (w && bendFit(w)){ best = w; lo = k; } else hi = k;
     }
-    if (!best && !qBendOK(w0)) best = bendPull(w0, e, t, dx, dy);
+    if (!best && !bendFit(w0)) best = bendPull(w0, e, t, dx, dy);
     return best;
   }
 
@@ -3141,7 +3161,7 @@
                            Math.max(0, Math.min(dispH, p.y - box.top + panY)));
       if (b){
         var w = bendPull(w0, e, t, b.x - a.x, b.y - a.y);
-        if (w && !qBendOK(w)) w = bendSlide(w0, e, t, b.x - a.x, b.y - a.y);
+        if (w && !bendFit(w)) w = bendSlide(w0, e, t, b.x - a.x, b.y - a.y);
         if (w){ cWarp = w; layoutQuad(); }
       }
     }
@@ -3149,29 +3169,40 @@
     loupeTick();
   }
 
-  /* the edge itself is grabbable, anywhere along it, so the second control each
-     edge has never needs a control of its own on screen */
-  function bendGrab(ev){
-    if (!qCurve || !cQuad || !cWarp) return;
+  /* The edge itself is grabbable, anywhere along it, in both shapes. Under
+     Curve that pull bends it, and the second control each edge has never needs
+     a control of its own on screen. Under Custom the edge has nothing to bend,
+     so the pull carries the whole edge — the two corners that hold it — which
+     is exactly what its midpoint handle does, only without having to land on
+     the dot. The dot is a small target on a page held at arm's length; the
+     edge running past it is not. */
+  function edgeGrab(ev){
+    if (!qOn || !cQuad || !cWarp) return;
     var p = pt(ev), box = cropBox.getBoundingClientRect();
     var x = p.x - box.left + panX, y = p.y - box.top + panY;
-    var near = bendNear(quadView(), cWarp, x, y);
+    var near = bendNear(quadView(), qCurve ? cWarp : null, x, y);
     if (!near || Math.sqrt(near.d) > 26) return;
     ev.preventDefault(); ev.stopPropagation();
-    var w0 = cWarp.slice(0), e = near.e, t = near.t;
+    var e = near.e, t = near.t, w0 = cWarp.slice(0);
+    var pull = qCurve ? null : quadPull([e, (e + 1) % 4], p, cQuad.slice(0));
     qHold = 4 + e; qAim = { x: x, y: y };
     quadBox.classList.add("pulling");
     loupeTick();
     attach(function(mv){
       mv.preventDefault();
-      bendDrag(e, t, w0, box, pt(mv));
+      var q = pt(mv);
+      if (pull){
+        pull(q);
+        qAim = { x: q.x - box.left + panX, y: q.y - box.top + panY };
+        loupeTick();
+      } else bendDrag(e, t, w0, box, q);
     }, function(){
       quadBox.classList.remove("pulling");
       loupeHide();
     });
   }
-  quadBox.addEventListener("touchstart", bendGrab, { passive: false });
-  quadBox.addEventListener("mousedown", bendGrab);
+  quadBox.addEventListener("touchstart", edgeGrab, { passive: false });
+  quadBox.addEventListener("mousedown", edgeGrab);
 
   function loupeHide(){
     if (qRaf){ cancelAnimationFrame(qRaf); qRaf = 0; }
@@ -3459,6 +3490,25 @@
     g.addEventListener("mousedown", start);
   });
 
+  /* Moving one corner, or the two that carry a whole edge between them: the
+     same walk either way, so the handle and the edge itself share it. The
+     finger's travel is turned into travel across the photo, so a tilted or
+     turned view moves the points the way the eye expects. */
+  function quadPull(mv, p0, q0){
+    var s0 = quadAt(p0.x, p0.y);
+    return function(p){
+      var sp = quadAt(p.x, p.y), q = q0.slice(0), i, j;
+      var dx = sp.x - s0.x, dy = sp.y - s0.y;
+      for (i = 0; i < mv.length; i++){
+        j = mv[i] * 2;
+        q[j]   = Math.max(0, Math.min(bw0, q0[j] + dx));
+        q[j+1] = Math.max(0, Math.min(bh0, q0[j+1] + dy));
+      }
+      if (!quadOK(q)) q = quadSlide(q0, q, mv);
+      if (q){ cQuad = q; layoutQuad(); }
+    };
+  }
+
   /* a corner moves alone; a midpoint takes the two corners beside it, which
      moves that whole edge without touching the other three */
   Array.prototype.forEach.call(quadBox.querySelectorAll(".qg"), function(g){
@@ -3467,7 +3517,7 @@
       e.preventDefault(); e.stopPropagation();
       var n = parseInt(g.getAttribute("data-q"), 10);
       var bending = qCurve && n >= 4;
-      var p0 = pt(e), s0 = quadAt(p0.x, p0.y), q0 = cQuad.slice(0);
+      var p0 = pt(e), q0 = cQuad.slice(0);
       var w0 = cWarp.slice(0);
       /* a corner is dragged by how far the finger travelled, so where the box
          happens to sit on the page never comes into it. A bend is different: it
@@ -3478,21 +3528,12 @@
       qHold = n; qAim = null;
       g.classList.add("held");
       loupeTick();
+      var pull = quadPull(mv, p0, q0);
       attach(function(ev){
         ev.preventDefault();
-        var p = pt(ev), i, j;
+        var p = pt(ev);
         if (bending){ bendDrag(n - 4, 0.5, w0, box, p); return; }
-        /* the finger's travel is turned into travel across the photo, so a
-           tilted or turned view moves the point the way the eye expects */
-        var sp = quadAt(p.x, p.y), q = q0.slice(0);
-        var dx = sp.x - s0.x, dy = sp.y - s0.y;
-        for (i = 0; i < mv.length; i++){
-          j = mv[i] * 2;
-          q[j]   = Math.max(0, Math.min(bw0, q0[j] + dx));
-          q[j+1] = Math.max(0, Math.min(bh0, q0[j+1] + dy));
-        }
-        if (!quadOK(q)) q = quadSlide(q0, q, mv);
-        if (q){ cQuad = q; layoutQuad(); }
+        pull(p);
         loupeTick();
       }, function(){
         g.classList.remove("held");
