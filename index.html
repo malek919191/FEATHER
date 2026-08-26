@@ -397,7 +397,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21</span>
+      <span class="ver">v1.21.1</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -2939,8 +2939,12 @@
       else if ((cr > 0 ? 1 : -1) !== sgn) return false;
     }
     /* the shortest edge is judged by what it measures on the glass, since that
-       is where the fingers are, not by what it measures in the photo */
-    var min = 30 / (viewK || 1);
+       is where the fingers are, not by what it measures in the photo — but at
+       the size the photo is shown at and never at the size it is zoomed to.
+       Measured against the zoom, an edge legal at four times magnification
+       became illegal on the way back out, and a shape the app had accepted
+       turned into one it refused to move at all. */
+    var min = 30 / (fitK || 1);
     for (i = 0; i < 4; i++) if (qLen(q, i, (i+1)%4) < min) return false;
     return true;
   }
@@ -2982,7 +2986,23 @@
       w = bendPull(w0, e, t, dx*k, dy*k);
       if (w && qBendOK(w)){ best = w; lo = k; } else hi = k;
     }
+    if (!best && !qBendOK(w0)) best = bendPull(w0, e, t, dx, dy);
     return best;
+  }
+
+  /* The finger, brought back inside the unit square. A perspective map has a
+     horizon, and beyond it the arithmetic still hands back a point — one that
+     has flipped through infinity and landed nowhere near the finger. Pulling
+     on a number that came back from infinity is what threw an edge somewhere
+     the finger had never been, and then held it there however the finger moved
+     afterwards. So beyond the horizon there is simply no answer, and a pull
+     further out than the shape is twice over is not worth reading either. */
+  function qBack(Hi, c, x, y){
+    var wc = Hi[6]*c.x + Hi[7]*c.y + Hi[8];
+    var w = Hi[6]*x + Hi[7]*y + Hi[8];
+    if (!(w * wc > 0)) return null;
+    return { x: Math.max(-1, Math.min(2, (Hi[0]*x + Hi[1]*y + Hi[2]) / w)),
+             y: Math.max(-1, Math.min(2, (Hi[3]*x + Hi[4]*y + Hi[5]) / w)) };
   }
 
   /* which edge is under the finger, and how far along it. The boundary is
@@ -3019,6 +3039,11 @@
       }
       if (quadOK(q)){ best = q; lo = t; } else hi = t;
     }
+    /* nothing along the way is legal only when the shape it started from was
+       already crossed over. Refusing there would freeze the handle under a
+       finger that is still moving, with no way back — so the place the finger
+       asked for is taken instead, because it is the only direction out. */
+    if (!best && !quadOK(q0)) best = q1;
     return best;
   }
 
@@ -3107,16 +3132,18 @@
      described inside the unit square, so the perspective is undone to carry the
      pull across. */
   function bendDrag(e, t, w0, box, p){
-    var dq = quadView(), Hi = mInv(qMap(dq));
+    var dq = quadView(), m = qMap(dq), Hi = m ? mInv(m) : null;
     if (Hi){
-      var m = qMap(dq);
+      var c = mAt(m, 0.5, 0.5);
       var now = qEdgeAt(m, w0, e, t);
       var a = mAt(Hi, now.x, now.y);
-      var b = mAt(Hi, Math.max(0, Math.min(dispW, p.x - box.left + panX)),
-                      Math.max(0, Math.min(dispH, p.y - box.top + panY)));
-      var w = bendPull(w0, e, t, b.x - a.x, b.y - a.y);
-      if (w && !qBendOK(w)) w = bendSlide(w0, e, t, b.x - a.x, b.y - a.y);
-      if (w){ cWarp = w; layoutQuad(); }
+      var b = qBack(Hi, c, Math.max(0, Math.min(dispW, p.x - box.left + panX)),
+                           Math.max(0, Math.min(dispH, p.y - box.top + panY)));
+      if (b){
+        var w = bendPull(w0, e, t, b.x - a.x, b.y - a.y);
+        if (w && !qBendOK(w)) w = bendSlide(w0, e, t, b.x - a.x, b.y - a.y);
+        if (w){ cWarp = w; layoutQuad(); }
+      }
     }
     qAim = { x: p.x - box.left + panX, y: p.y - box.top + panY };
     loupeTick();
@@ -3355,7 +3382,9 @@
   function panStart(e){
     if (e.touches && e.touches.length > 1) return;
     if (dispW <= viewW && dispH <= viewH) return;
-    if (e.target.closest("#frame") || e.target.closest(".qg")) return;
+    /* the handles keep the finger; everything else on the photo moves it,
+       the inside of the crop's own rectangle included */
+    if (e.target.closest(".grip") || e.target.closest(".qg")) return;
     e.preventDefault();
     var p0 = pt(e), x0 = panX, y0 = panY;
     attach(function(ev){
@@ -3378,6 +3407,11 @@
 
   function dragFrame(e){
     if (e.target.closest(".grip")) return;
+    /* while the photo is zoomed in, one finger is for looking around: the crop
+       is held on the pixels it was put on and moves only by its own corners,
+       so a drag meant to bring another part of the page into view can never
+       carry the crop along with it */
+    if (zoomK > 1) return;
     e.preventDefault();
     var p0 = pt(e), x0 = fx, y0 = fy;
     attach(function(ev){
