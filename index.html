@@ -398,7 +398,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.2</span>
+      <span class="ver">v1.21.3</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -2866,12 +2866,15 @@
     x.setTransform(1, 0, 0, 1, 0, 0);
   }
 
+  /* a fresh rectangle is the whole of what the window shows — which at full
+     size is the whole photo, and zoomed in is the part being looked at */
   function resetFrame(){
+    var ww = winW(), wh = winH();
     if (ratioVal > 0){
-      var w = dispW, h = w / ratioVal;
-      if (h > dispH){ h = dispH; w = h * ratioVal; }
-      fw = w; fh = h; fx = (dispW - w) / 2; fy = (dispH - h) / 2;
-    } else { fx = 0; fy = 0; fw = dispW; fh = dispH; }
+      var w = ww, h = w / ratioVal;
+      if (h > wh){ h = wh; w = h * ratioVal; }
+      fw = w; fh = h; fx = panX + (ww - w) / 2; fy = panY + (wh - h) / 2;
+    } else frameToWindow();
   }
 
   function layoutFrame(){
@@ -3360,14 +3363,40 @@
 
   /* sx, sy is where in the window the fingers are; cx, cy is the spot on the
      photo they took hold of, which is what stays under them */
+  /* ---- the zoom is itself a way to crop -----------------------------------
+     Under Normal the crop is the whole of what the window shows, so bringing
+     a part of the photo up to fill the window is the shortest way there is to
+     crop to it — no rectangle to place, no corners to chase. It follows the
+     window only while it still IS the window: pull the rectangle in by hand,
+     or put a ratio on it, and it is yours from that moment and the zoom leaves
+     it exactly where it was put. The four points of Custom and Curve are never
+     touched by any of this — they live in the photo's own pixels, and a zoom
+     has nothing to say about them. */
+  function winW(){ return Math.min(viewW, dispW - panX); }
+  function winH(){ return Math.min(viewH, dispH - panY); }
+
+  function frameIsWindow(){
+    if (ratioVal > 0) return false;
+    return Math.abs(fx - panX) < 1.5 && Math.abs(fy - panY) < 1.5 &&
+           Math.abs(fw - winW()) < 1.5 && Math.abs(fh - winH()) < 1.5;
+  }
+
+  function frameToWindow(){
+    fx = panX; fy = panY; fw = winW(); fh = winH();
+  }
+
   function zoomTo(k, sx, sy, cx, cy){
     k = Math.max(1, Math.min(k, zMax));
+    /* asked before anything moves, since the window is about to become a
+       different rectangle from the one the crop is being compared against */
+    var follow = frameIsWindow();
     var now = fitK * k, r = now / viewK;
     if (r !== 1){ fx *= r; fy *= r; fw *= r; fh *= r; }
     zoomK = k;
     panX = cx * now - sx;
     panY = cy * now - sy;
     paintEditor();
+    if (follow) frameToWindow();
     layoutFrame();
     if (qOn) layoutQuad();
   }
@@ -3417,13 +3446,16 @@
        the inside of the crop's own rectangle included */
     if (e.target.closest(".grip") || e.target.closest(".qg")) return;
     e.preventDefault();
-    var p0 = pt(e), x0 = panX, y0 = panY;
+    var p0 = pt(e), x0 = panX, y0 = panY, follow = frameIsWindow();
     attach(function(ev){
       ev.preventDefault();
       var p = pt(ev);
       panX = x0 - (p.x - p0.x);
       panY = y0 - (p.y - p0.y);
-      clampPan(); placeView(); drawSoon();
+      clampPan();
+      /* the crop is the window, so moving the photo under it crops elsewhere */
+      if (follow){ frameToWindow(); layoutFrame(); }
+      placeView(); drawSoon();
     });
   }
   cropBox.addEventListener("touchstart", panStart, { passive: false });
