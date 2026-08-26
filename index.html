@@ -381,7 +381,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.19</span>
+      <span class="ver">v1.19.1</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -1340,6 +1340,71 @@
   }
 
   /* sniffed once per picked file and kept on it */
+  /* ---- the lens the photo was taken with -------------------------------
+     A photo states its own focal length, as the 35mm equivalent every camera
+     agrees on. It is one number, it is read here on the phone, and it goes
+     nowhere: what is saved is still pixels and nothing else. The four points
+     of a Custom crop need it, because the proportions of a rectangle seen at
+     an angle cannot be worked out from the four corners alone.
+     Where a file carries no lens — a screenshot, a rendered page, a photo some
+     other app has already re-saved — an ordinary phone camera is assumed, and
+     even a guess a third out still beats measuring the sides as they lie. */
+  function exifU16(b, i, le){ return le ? (b[i] | b[i+1] << 8) : (b[i] << 8 | b[i+1]); }
+  function exifU32(b, i, le){
+    return le ? (b[i] | b[i+1] << 8 | b[i+2] << 16) + b[i+3] * 16777216
+              : b[i] * 16777216 + ((b[i+1] << 16 | b[i+2] << 8 | b[i+3]) >>> 0);
+  }
+
+  /* the tag block opens with "Exif\0\0" in a JPEG and in the box a HEIC keeps
+     it in alike, so one search finds both */
+  function exifAt(b){
+    var n = Math.min(b.length, 262144), i;
+    for (i = 0; i < n - 8; i++){
+      if (b[i] === 0x45 && b[i+1] === 0x78 && b[i+2] === 0x69 && b[i+3] === 0x66 &&
+          b[i+4] === 0 && b[i+5] === 0) return i + 6;
+    }
+    return -1;
+  }
+
+  /* tag 0xA405, the focal length as a 35mm camera would call it */
+  function exifF35(buf){
+    var b = new Uint8Array(buf), t = exifAt(b);
+    if (t < 0 || t + 8 > b.length) return 0;
+    var le = (b[t] === 0x49 && b[t+1] === 0x49);
+    if (!le && !(b[t] === 0x4D && b[t+1] === 0x4D)) return 0;
+    if (exifU16(b, t + 2, le) !== 42) return 0;
+    var todo = [exifU32(b, t + 4, le)], done = 0, v = 0, ifd, n, i, p, tag, typ;
+    while (todo.length && done < 4){
+      ifd = todo.shift(); done++;
+      if (ifd < 8 || t + ifd + 2 > b.length) continue;
+      n = exifU16(b, t + ifd, le);
+      if (n < 1 || n > 256) continue;
+      for (i = 0; i < n; i++){
+        p = t + ifd + 2 + i * 12;
+        if (p + 12 > b.length) break;
+        tag = exifU16(b, p, le);
+        typ = exifU16(b, p + 2, le);
+        if (tag === 0x8769) todo.push(exifU32(b, p + 8, le));          /* the Exif block */
+        else if (tag === 0xA405) v = (typ === 3) ? exifU16(b, p + 8, le) : exifU32(b, p + 8, le);
+      }
+    }
+    return (v > 3 && v < 2000) ? v : 0;
+  }
+
+  async function lensRead(file){
+    if (file._f35 !== undefined) return;
+    file._f35 = 0;
+    try { file._f35 = exifF35(await file.slice(0, 262144).arrayBuffer()); } catch (e){}
+  }
+
+  /* the same length in pixels of this photo: the 35mm equivalent is measured
+     against a 36mm frame, so it is the photo's long side that answers to it */
+  var LENS_DEFAULT = 26;      /* what a phone's main camera usually is */
+  function lensPx(file, bw, bh){
+    var mm = (file && file._f35) || LENS_DEFAULT;
+    return mm / 36 * Math.max(bw, bh);
+  }
+
   async function cmSpace(file){
     if (!(await cmProbe())) return null;
     if (file._wide === undefined){
@@ -1533,6 +1598,58 @@
     return mAt(m, b.u, b.v);
   }
 
+  function qCross(a, b){
+    return [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
+  }
+  function qDot(a, b){ return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+
+  /* ---- the proportions a rectangle really had ---------------------------
+     An angle shortens whichever side of a page leans away from the lens, so
+     measuring the four sides as they lie in the photo measures them already
+     shortened — which is why a page photographed on a table comes back square.
+     On a table at 45 degrees that measurement is out by half again; at the
+     angle a book gets, by more than double.
+
+     The proportions are recoverable from those same four corners together with
+     the lens, and the photo states its own lens. Solving for the lens from the
+     corners instead is possible on paper and useless in the hand: it works by
+     running the edges out to where they would meet, far outside the picture,
+     and a corner placed two screen pixels out swings that meeting point wildly.
+     Measured against a shaky finger the stated lens held the answer inside a
+     tenth, while solving for it swung between half short and a quarter over.
+
+     With no angle at all the arithmetic falls back to the sides as measured,
+     which is then the right answer anyway — so there is no special case. */
+  function qAspect(q, bw, bh, fpx){
+    var u0 = bw / 2, v0 = bh / 2;
+    var m1 = [q[0], q[1], 1], m2 = [q[2], q[3], 1],
+        m3 = [q[6], q[7], 1], m4 = [q[4], q[5], 1];
+    var d2 = qDot(qCross(m2, m4), m3), d3 = qDot(qCross(m3, m4), m2);
+    if (!d2 || !d3) return 0;
+    var k2 = qDot(qCross(m1, m4), m3) / d2;
+    var k3 = qDot(qCross(m1, m4), m2) / d3;
+    var n2 = [k2*m2[0] - m1[0], k2*m2[1] - m1[1], k2 - 1];
+    var n3 = [k3*m3[0] - m1[0], k3*m3[1] - m1[1], k3 - 1];
+    var f2 = fpx * fpx, a, b, s2, s3;
+    a = n2[0] - u0*n2[2]; b = n2[1] - v0*n2[2];
+    s2 = a*a + b*b + f2*n2[2]*n2[2];
+    a = n3[0] - u0*n3[2]; b = n3[1] - v0*n3[2];
+    s3 = a*a + b*b + f2*n3[2]*n3[2];
+    if (!(s2 > 0) || !(s3 > 0)) return 0;
+    var r = Math.sqrt(s2 / s3);
+    return (r > 0.02 && r < 50) ? r : 0;
+  }
+
+  /* the measured size, put back into the proportions the page really had. It
+     only ever stretches the side that was leaning away, never shrinks the
+     other, so nothing the photo actually holds is thrown away. */
+  function qFit(sz, r){
+    if (!(r > 0)) return sz;
+    var m = sz.w / sz.h;
+    if (r > m) return { w: Math.max(1, Math.round(sz.h * r)), h: sz.h };
+    return { w: sz.w, h: Math.max(1, Math.round(sz.w / r)) };
+  }
+
   function qLen(q, a, b){
     var dx = q[b*2] - q[a*2], dy = q[b*2+1] - q[a*2+1];
     return Math.sqrt(dx*dx + dy*dy);
@@ -1569,6 +1686,16 @@
              h: Math.max(1, Math.round(Math.max(len[1], len[3]))) };
   }
 
+  /* a bend lengthens whichever sides it bows, so the proportions recovered
+     from the four corners are carried along by however much each direction
+     gained — the corners give the page's shape, the curves give its extent */
+  function qAspectBend(q, W, r){
+    if (!(r > 0) || !qBent(W)) return r;
+    var flat = qSize(q), bent = qSizeBend(q, W);
+    if (!flat.w || !flat.h || !bent.w || !bent.h) return r;
+    return r * (bent.w / flat.w) / (bent.h / flat.h);
+  }
+
   function cropQuad(bmp, bw, bh, edit, space, bg){
     var H = qMap(edit.quad), e2, k2;
     /* four points in a line have no straightening in them: the plain rectangle
@@ -1580,7 +1707,7 @@
     }
 
     var W = qBent(edit.warp) ? edit.warp : null;
-    var sz = qSizeBend(edit.quad, W), ka = 1;
+    var sz = qFit(qSizeBend(edit.quad, W), edit.aspect || 0), ka = 1;
     if (sz.w * sz.h > CANVAS_CAP) ka = Math.sqrt(CANVAS_CAP / (sz.w * sz.h));
     var ow = Math.max(1, Math.round(sz.w * ka));
     var oh = Math.max(1, Math.round(sz.h * ka));
@@ -2393,6 +2520,7 @@
      which is what makes a page whose edge sits a little off a single drag
      instead of two. Held in display pixels, the way fx and fy are. */
   var cQuad = null, qOn = false, qCurve = false, cWarp = null, qHold = -1, qRaf = 0;
+  var cLens = 0;      /* this photo's lens, in its own pixels */
   var quadBox = $("quad"), quadSvg = $("quadSvg"), loupe = $("loupe"), loupeCv = $("loupeCv");
   var LOUPE = 104, LZOOM = 2.6;
 
@@ -2563,6 +2691,10 @@
     catch (err){ setStatus("errOpen", true); return; }
     var d0 = dimsOf(cBmp);
     bw0 = d0.w; bh0 = d0.h;
+    /* read once, before anything is drawn, so the figure under the photo is
+       the straightened one from the first moment the four points are shown */
+    await lensRead(sourceFiles[idx]);
+    cLens = lensPx(sourceFiles[idx], bw0, bh0);
 
     paintEditor();
     if (e){
@@ -2791,7 +2923,8 @@
     /* what the straightened photo will measure. The shape is already in the
        photo's own pixels, so this is simply its own size — a tilt zooms the
        view but cannot inflate the figure. */
-    var sz = qSizeBend(cQuad, W);
+    var sz = qFit(qSizeBend(cQuad, W),
+                  qAspectBend(cQuad, W, qAspect(cQuad, bw0, bh0, cLens)));
     cropSize.textContent = sz.w + " \u00D7 " + sz.h;
   }
 
@@ -3090,6 +3223,11 @@
       /* the bend goes with it only when the edges are actually bent, so a
          straight-edged crop reaches the pipeline exactly as it always did */
       if (qCurve && qBent(cWarp)) edits[cropIdx].warp = cWarp.slice(0);
+      /* and the proportions the page really had, worked out from the photo's
+         own lens — the figure shown under the photo is the one that saves */
+      var ar = qAspectBend(cQuad, (qCurve && qBent(cWarp)) ? cWarp : null,
+                           qAspect(cQuad, bw0, bh0, cLens));
+      if (ar > 0) edits[cropIdx].aspect = ar;
     }
     else if (whole && cRot === 0 && !cFH && !cFV && !cFree) edits[cropIdx] = null;
     else edits[cropIdx] = { sx: sx, sy: sy, sw: sw, sh: sh, rot: cRot, fh: cFH, fv: cFV, free: cFree, ratio: ratioVal };
