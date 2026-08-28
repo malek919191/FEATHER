@@ -410,7 +410,7 @@
     </div>
     <span class="meta-right">
       <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.11</span>
+      <span class="ver">v1.21.12</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
     </span>
   </header>
@@ -619,7 +619,10 @@
   var sourceFiles = [], edits = [], results = [], urls = [], token = 0, busy = false;
   /* the four points of every photo, kept whether or not Custom is the crop in
      force, so a trip through Normal and back finds them where they were left,
-     and beside them the bend of its four edges, kept the same way */
+     and beside them the bend of its four edges, the corner on each of them,
+     and where each edge's three handles were left along it — all four kept the
+     same way, and all four to be cleared and shifted together with the photos
+     they belong to */
   var quads = [], warps = [], kinks = [], spots = [];
   /* sharpAll drives every photo; sharps[i] is null until that photo is set
      on its own in the viewer, after which it stops following sharpAll */
@@ -807,8 +810,9 @@
   bind("formats", function(b){ format = b.dataset.f; });
   bind("mattes",  function(b){ matte = b.dataset.m; });
   bind("levels",  function(b){ quality = parseFloat(b.dataset.q); fitOff(); });
+  /* the pick is taken first and the target dropped after it, so the repaint
+     inside fitOff has the new choice to work from rather than the old one */
   bind("scales",  function(b){
-    fitOff();
     if (b.dataset.w === "custom"){
       customMode = true;
       customRow.classList.remove("hidden");
@@ -819,6 +823,7 @@
       customRow.classList.add("hidden");
       targetW = parseInt(b.dataset.w, 10);
     }
+    fitOff();
   });
 
   function seedCustom(){
@@ -1013,10 +1018,17 @@
      and an empty Custom pair simply means the photo's own size */
   function fitStart(){ var v = longestTarget(); return v === null ? 0 : v; }
 
-  /* pressing a size or a quality button is the user taking the wheel back */
+  /* Pressing a size or a quality button is the user taking the wheel back, and
+     he takes back both rows at once — the one he pressed and the one he did
+     not. Without that second half the row he left alone went on showing the
+     app's own pick: press 900 while a target was in force and the quality row
+     still read Med, while the photo was encoding at Highest. The rows are the
+     only place those two numbers are ever shown, so one of them lying is the
+     whole of what the user would have to go on. */
   function fitOff(){
     if (!fitKB) return;
     fitKB = 0; fkbEl.value = "";
+    fitRestore();
   }
   /* and clearing the field puts the two rows back on what he had chosen
      himself, so a pick that is no longer in force is never left showing */
@@ -1096,6 +1108,7 @@
     quads = sourceFiles.map(function(){ return null; });
     warps = sourceFiles.map(function(){ return null; });
     kinks = sourceFiles.map(function(){ return null; });
+    spots = sourceFiles.map(function(){ return null; });
     sharps = sourceFiles.map(function(){ return null; });
     baseRatio = null; customW = null; customH = null;
     cwEl.value = ""; chEl.value = "";
@@ -1983,7 +1996,9 @@
        Three empty places at each end of those mean the four controls a pixel
        reads are always there to read, with no bounds test in the loop. Between
        them the twenty-four controls cost less per pixel than the two did. */
-    var wn = W ? W.length / 8 : 0, bi, bk, bw, bo, Au = null, Av = null;
+    /* bwt, not bw: bw is this function's own photo width, and a loop variable
+       of that name would quietly take it over from here down */
+    var wn = W ? W.length / 8 : 0, bi, bk, bwt, bo, Au = null, Av = null;
     var Lu = 0, Lv = 0, Ru = 0, Rv = 0;
     var Cb = null, C0 = null, C1 = null, C2 = null, C3 = null;
     if (W && !Wk){
@@ -2009,9 +2024,9 @@
         bAt(vv, bV);
         Lu = 0; Lv = 0; Ru = 0; Rv = 0;
         for (bi = 1; bi <= 4; bi++){
-          bk = bV[0] + bi - 1; bw = bV[bi];
-          Lu += bw * bC(W, wn, 3, bk, 0); Lv += bw * bC(W, wn, 3, bk, 1);
-          Ru += bw * bC(W, wn, 1, bk, 0); Rv += bw * bC(W, wn, 1, bk, 1);
+          bk = bV[0] + bi - 1; bwt = bV[bi];
+          Lu += bwt * bC(W, wn, 3, bk, 0); Lv += bwt * bC(W, wn, 3, bk, 1);
+          Ru += bwt * bC(W, wn, 1, bk, 0); Rv += bwt * bC(W, wn, 1, bk, 1);
         }
         for (bk = 0; bk < wn; bk++){
           Au[bk+3] = (1-vv)*W[bk*2]   + vv*W[(2*wn + bk)*2];
@@ -2246,14 +2261,24 @@
   async function prepSrc(file, edit, mime){
     var space = await cmSpace(file);
     var bmp = await decode(file);
-    alphaSniff(file, bmp);
-    var bg = matteOf(file, mime);
-    var d0 = dimsOf(bmp);
-    var e = buildEdited(bmp, d0.w, d0.h, edit, space, bg);
-    /* the left-hand side of the compare viewer: it has to keep transparency
-       too, or the photo would be judged against a black flattening of itself */
-    var refBlob = null;
-    if (edit) refBlob = await toBlob(e.src, bg === null ? "image/png" : "image/jpeg", 0.95);
+    /* the caller owns the photo once this hands it over; on the way out
+       through a failure it belongs to nobody, so it is freed here. A decoded
+       photo is the largest thing the app ever holds, and a phone gives one up
+       for far less than a desktop does. */
+    var bg, d0, e, refBlob = null;
+    try {
+      alphaSniff(file, bmp);
+      bg = matteOf(file, mime);
+      d0 = dimsOf(bmp);
+      e = buildEdited(bmp, d0.w, d0.h, edit, space, bg);
+      /* the left-hand side of the compare viewer: it has to keep transparency
+         too, or the photo would be judged against a black flattening of itself */
+      if (edit) refBlob = await toBlob(e.src, bg === null ? "image/png" : "image/jpeg", 0.95);
+    } catch (err){
+      release(bmp);
+      if (e && e.temp) kill(e.temp);
+      throw err;
+    }
     return { space: space, bmp: bmp, bg: bg, e: e, refBlob: refBlob };
   }
 
@@ -2268,14 +2293,27 @@
       h = Math.max(1, Math.round(oh * s));
     }
 
-    var canvas = stepDown(e.src, ow, oh, w, h, p.space, p.bg);
-    release(p.bmp);
-    if (e.temp) kill(e.temp);
+    /* freed in the order they stop being needed, and freed again on the way
+       out through a failure — a photo that throws mid-encode used to leave the
+       whole decoded original behind it. Releasing twice costs nothing: both
+       calls check what they are handed. */
+    var canvas = null, blob;
+    try {
+      canvas = stepDown(e.src, ow, oh, w, h, p.space, p.bg);
+      /* the source is finished with the moment the resize is done, and letting
+         it go before the sharpen and the encode is what keeps a twelve-megapixel
+         photo from holding two full copies of itself at once */
+      release(p.bmp); p.bmp = null;
+      if (e.temp){ kill(e.temp); e.temp = null; }
 
-    if (sharp > 0) (p.bg === null ? sharpenAlpha : sharpen)(canvas.getContext("2d"), w, h, sharp);
+      if (sharp > 0) (p.bg === null ? sharpenAlpha : sharpen)(canvas.getContext("2d"), w, h, sharp);
 
-    var blob = await toBlob(canvas, mime, q);
-    kill(canvas);
+      blob = await toBlob(canvas, mime, q);
+    } finally {
+      if (canvas) kill(canvas);
+      release(p.bmp);
+      if (e.temp) kill(e.temp);
+    }
     if (!blob) throw new Error("encode");
     return { blob: blob, refBlob: p.refBlob, w: w, h: h, ow: ow, oh: oh,
              p3: !!p.space, clear: p.bg === null };
@@ -2396,16 +2434,22 @@
   async function previewOnly(file, edit){
     var space = await cmSpace(file);
     var bmp = await decode(file);
-    alphaSniff(file, bmp);
-    var d0 = dimsOf(bmp);
-    var e = buildEdited(bmp, d0.w, d0.h, edit, space);
-    var s = Math.min(1, 1000 / Math.max(e.w, e.h));
-    var w = Math.max(1, Math.round(e.w * s)), h = Math.max(1, Math.round(e.h * s));
-    var c = stepDown(e.src, e.w, e.h, w, h, space);
-    var blob = await toBlob(c, "image/jpeg", 0.85);
-    release(bmp);
-    if (e.temp) kill(e.temp);
-    kill(c);
+    /* the same care the encode takes: a photo that fails here is skipped and
+       the list carries on, so nothing else would ever come back for it */
+    var d0, e = null, c = null, blob;
+    try {
+      alphaSniff(file, bmp);
+      d0 = dimsOf(bmp);
+      e = buildEdited(bmp, d0.w, d0.h, edit, space);
+      var s = Math.min(1, 1000 / Math.max(e.w, e.h));
+      var w = Math.max(1, Math.round(e.w * s)), h = Math.max(1, Math.round(e.h * s));
+      c = stepDown(e.src, e.w, e.h, w, h, space);
+      blob = await toBlob(c, "image/jpeg", 0.85);
+    } finally {
+      release(bmp);
+      if (e && e.temp) kill(e.temp);
+      kill(c);
+    }
     return { url: URL.createObjectURL(blob), w: e.w, h: e.h };
   }
 
@@ -2786,8 +2830,8 @@
      beside the bend and never instead of it, so a trip through Curve and back
      finds the corners where they were left and the bend where it was left. */
   var cKink = null;
-  /* where each edge's two travelling handles have been left, eight numbers in
-     the order the handles are numbered: two to an edge */
+  /* where each edge's three handles have been left along it, twelve numbers:
+     three to an edge, in the order the edges are numbered */
   var cSpots = null;
   /* whether the four points are the user's own yet. Until a point or an edge
      has actually been pulled they are nobody's, so choosing Custom or Curve
@@ -2931,6 +2975,7 @@
     quads.splice(idx, 1);
     warps.splice(idx, 1);
     kinks.splice(idx, 1);
+    spots.splice(idx, 1);
     sharps.splice(idx, 1);
     stubEls.splice(idx, 1);
     fitPicks.splice(idx, 1);
@@ -2995,10 +3040,17 @@
     cKink = kinks[idx] ? kinks[idx].slice(0) : null;
     cSpots = spots[idx] ? spots[idx].slice(0) : null;
     if (cKink && !qDispOK(cKink)) cKink = bendBack(cKink, false);
-    /* the shape that was applied says which of the two was in front: sixteen
-       numbers is a bend and Curve was, eight is corners and Custom was */
+    /* the shape that was applied says which of the two was in front: eight
+       numbers is a corner on each edge and Custom was, anything longer is a
+       row of controls along each edge and Curve was. Asked the other way
+       round — by naming the bend's own length — it stops being true the day
+       that length changes, which is exactly what happened: the row of
+       controls made a bend 192 numbers where it had been 16, and a Curve crop
+       came back under Custom with its edges straight, then lost its bend
+       outright at the next Apply. Only the corners have a length that is
+       fixed, so the corners are what the question asks about. */
     quadOn(!!(cQuad && e && e.quad),
-           !!(e && e.warp && e.warp.length === 16 && qBent(e.warp)));
+           !!(e && e.warp && e.warp.length !== 8 && qBent(e.warp)));
     lockPage();
     cropper.classList.remove("hidden");
   }
