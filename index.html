@@ -39,15 +39,14 @@
     --gold-hi:#E3C36A;
     --gold-sh:#F7E9B4;
 
-    /* The paper, drawn rather than photographed. The tooth is a noise field
-       the browser generates from the filter written into this line — no image
-       file, nothing fetched, nothing sitting beside index.html. Both filters
-       zero the colour and take the alpha from the noise, so the grain darkens
-       the paper instead of greying it. The mark on the band is the same idea:
-       a shape, not a picture. The gold in it is written out because a data URI
-       cannot read a variable; it is the only colour in the file outside these
-       blocks, and it is --gold-hi. */
-    --grain:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='260'%20height='260'%3E%3Cfilter%20id='g'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='.85'%20numOctaves='3'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20values='0%200%200%200%200%200%200%200%200%200%200%200%200%200%200%20.85%200%200%200%200'/%3E%3C/filter%3E%3Cfilter%20id='m'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='.013'%20numOctaves='4'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20values='0%200%200%200%200%200%200%200%200%200%200%200%200%200%200%20.6%200%200%200%20-.18'/%3E%3C/filter%3E%3Crect%20width='260'%20height='260'%20filter='url(%23m)'/%3E%3Crect%20width='260'%20height='260'%20filter='url(%23g)'/%3E%3C/svg%3E");
+    /* The mark on the gold band. It is a shape rather than a picture, and the
+       gold in it is written out because a data URI cannot read a variable —
+       it is --gold-hi, and it is one of the four places a colour is spelt out
+       on purpose. The paper's tooth is NOT here: Safari refuses to run an SVG
+       filter inside a background image, which is exactly how v1.22 shipped a
+       flat background to the phone. It is drawn in the script instead, by
+       grainMake, and handed back to --grain at startup. */
+    --grain:none;
     --star:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Cpath%20d='M8%200C8.6%204.4%2011.6%207.4%2016%208%2011.6%208.6%208.6%2011.6%208%2016%207.4%2011.6%204.4%208.6%200%208%204.4%207.4%207.4%204.4%208%200Z'%20fill='%23E3C36A'/%3E%3C/svg%3E");
   }
 
@@ -59,7 +58,9 @@
     --ink:#2E3018;
     --ink-soft:#6F6A4C;
     --rule:#C9BC98;
+    --bw:1px;
     --fill:#43441F;
+    --fill-img:none;
     --on-fill:#F4EEDD;
     --on-fill-dim:#B4B189;
     --stamp:#A6371F;
@@ -67,7 +68,14 @@
     --shadow:rgba(62,58,30,.16);
     --press:rgba(62,58,30,.09);
     --thumb-sh:rgba(62,58,30,.32);
-    --grain-a:.16;
+    --grain-a:.15;
+    /* the compare viewer and the cropper: dark in both modes, because judging
+       a photo wants a neutral ground — but in the palette's own warmth, not
+       the blue-black they used to carry, which read as another app's colour */
+    --stage:#241E14;
+    --stage-ink:#F0E7D3;
+    --stage-soft:#A89877;
+    --stage-rule:#5E5236;
   }
 
   /* ---- Advanced: dark maroon falling into black -------------------------
@@ -83,18 +91,32 @@
     --card:rgba(0,0,0,.26);
     --ink:#EFE2CB;
     --ink-soft:#B9A184;
-    --rule:#7E5F36;
-    --fill:#D9BE7C;
-    --on-fill:#241A0C;
-    --on-fill-dim:#5E4B27;
+    /* a frame drawn in gold, and drawn half a pixel heavier than the cream
+       one: on a dark page a hairline all but disappears */
+    --rule:#A07B33;
+    --bw:1.5px;
+    --fill:#C9A24A;
+    /* gold is a metal, and a metal is a gradient. A flat fill of the same
+       colour reads as yellow paint — which is exactly what it did */
+    --fill-img:linear-gradient(180deg,#F2DCA0 0%,#D7B058 38%,#B98D34 62%,#E6CB86 100%);
+    --on-fill:#2A1D08;
+    --on-fill-dim:#6B551F;
     --stamp:#E9B44C;
     --shot:#241D1F;
     --shadow:rgba(0,0,0,.45);
     --press:rgba(255,255,255,.10);
     --thumb-sh:rgba(0,0,0,.55);
-    --grain-a:.22;
+    --grain-a:.26;
+    --stage:#120F10;
+    --stage-ink:#EFE2CB;
+    --stage-soft:#B9A184;
+    --stage-rule:#6F5530;
   }
   *{box-sizing:border-box}
+  /* the root element cannot see a variable set on the body, so it carries the
+     Simple paper written out — the fifth and last colour spelt out on purpose,
+     and only until themePaint hands it the palette's own top colour a moment
+     later. It is what the phone shows beyond the end of the page. */
   html{margin:0;background:#F0E9DA}
   body{margin:0}
   /* the wash and the tooth are both fixed to the screen, so they are drawn
@@ -129,16 +151,20 @@
      room for the mode toggle: on a 375-point phone the old size left the
      word running under the version number */
   h1{font-size:15px;font-weight:700;margin:0;letter-spacing:.10em;color:var(--ink)}
+  /* a fixed column, so the mode toggle is the same size in Arabic as it is
+     in English: left to size itself, it shrank to whichever pair of words was
+     shorter and the header changed shape with the language */
   .meta-right{display:flex;flex-direction:column;align-items:flex-end;
-    text-align:right;flex:0 0 auto;min-width:0}
+    text-align:right;flex:0 0 154px;width:154px;min-width:0}
   .ver{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-soft);
     letter-spacing:.08em;margin-top:3px;opacity:.75}
   .refresh{appearance:none;-webkit-appearance:none;cursor:pointer;
     display:inline-block;margin-top:7px;background:var(--card);color:var(--ink-soft);
-    border:1px solid var(--rule);border-radius:9px;padding:3px 8px 4px;
+    border:var(--bw) solid var(--rule);border-radius:9px;padding:3px 8px 4px;
     font-family:var(--mono);font-size:10px;letter-spacing:.08em;line-height:1.2;
     text-transform:uppercase;transition:background .15s,border-color .15s,color .15s}
-  .refresh:active,.refresh.tapped{background:var(--fill);border-color:var(--fill);color:var(--on-fill)}
+  .refresh:active,.refresh.tapped{background:var(--fill) var(--fill-img);
+    border-color:var(--fill);color:var(--on-fill)}
   .refresh.tapped{transition:none}
   /* the column takes the width of its widest child, which is the title, so the
      toggle beneath it ends exactly where the last T does; the negative margin
@@ -147,27 +173,30 @@
   .head-left h1{margin-right:-.10em}
   .lang{display:grid;grid-template-columns:1fr 1fr;gap:6px;
     margin-top:auto;padding-top:11px;width:100%}
-  .mode{align-self:stretch}
+  .mode{align-self:stretch;width:100%}
   .mode .langBtn{font-size:12px;padding:9px 3px}
   /* the title is the widest thing on the left; on the narrowest phones the
      mode toggle is what has to give, and it gives by tightening, not wrapping */
   @media (max-width:360px){
     h1{font-size:13.5px}
+    .meta-right{flex-basis:140px;width:140px}
     .mode .langBtn{font-size:11px;padding:9px 2px}
   }
   @media (max-width:340px){
     h1{letter-spacing:.06em}
     .head-left h1{margin-right:-.06em}
+    .meta-right{flex-basis:128px;width:128px}
     .mode .langBtn{font-size:10.5px;padding:9px 1px}
   }
   /* one height for both toggles whatever type sits in them, so the language
      and the mode line up exactly rather than nearly */
   .langBtn{appearance:none;-webkit-appearance:none;background:var(--card);cursor:pointer;
-    border:1px solid var(--rule);border-radius:11px;padding:11px 4px;min-height:39px;
+    border:var(--bw) solid var(--rule);border-radius:11px;padding:11px 4px;min-height:39px;
     display:flex;align-items:center;justify-content:center;text-align:center;
     color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:650;line-height:1.15;
     transition:background .15s,border-color .15s,color .15s}
-  .langBtn[aria-pressed="true"]{background:var(--fill);border-color:var(--fill);color:var(--on-fill)}
+  .langBtn[aria-pressed="true"]{background:var(--fill) var(--fill-img);
+    border-color:var(--fill);color:var(--on-fill)}
   .label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
     text-transform:uppercase;margin-bottom:7px}
   .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:18px}
@@ -178,13 +207,14 @@
   .row5{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
   .row6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}
   .opt{appearance:none;-webkit-appearance:none;background:var(--card);cursor:pointer;
-    border:1px solid var(--rule);border-radius:var(--r);padding:10px 2px 9px;
+    border:var(--bw) solid var(--rule);border-radius:var(--r);padding:10px 2px 9px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;color:var(--ink);font-family:var(--sans);
     font-size:12px;font-weight:650;line-height:1.15;transition:background .15s,border-color .15s,opacity .15s}
   .opt small{display:block;font-family:var(--mono);font-size:9px;font-weight:400;
     color:var(--ink-soft);margin-top:2px}
-  .opt[aria-pressed="true"]{background:var(--fill);border-color:var(--fill);color:var(--on-fill)}
+  .opt[aria-pressed="true"]{background:var(--fill) var(--fill-img);
+    border-color:var(--fill);color:var(--on-fill)}
   .opt[aria-pressed="true"] small{color:var(--on-fill-dim)}
   .row5.muted,.row6.muted{opacity:.4}
   .opt:disabled{opacity:.35;cursor:default}
@@ -198,7 +228,7 @@
   .custom.hidden{display:none}
   .custom.one{grid-template-columns:minmax(0,1fr)}
   .fieldwrap{display:flex;align-items:center;gap:7px;background:var(--card);min-width:0;
-    border:1px solid var(--rule);border-radius:var(--r);padding:9px 11px}
+    border:var(--bw) solid var(--rule);border-radius:var(--r);padding:9px 11px}
   .fieldwrap span{font-family:var(--mono);font-size:10px;color:var(--ink-soft);letter-spacing:.08em}
   .fieldwrap input{flex:1;min-width:0;border:none;background:transparent;outline:none;
     font-family:var(--mono);font-size:13.5px;font-weight:650;color:var(--ink);
@@ -222,9 +252,9 @@
     min-height:40px;font-size:12px;padding:11px 2px}
   .btn{display:block;width:100%;border:none;border-radius:var(--r);cursor:pointer;
     font-family:var(--sans);font-size:13.5px;font-weight:650;padding:11px 6px;
-    background:var(--fill);color:var(--on-fill);-webkit-appearance:none}
+    background:var(--fill) var(--fill-img);color:var(--on-fill);-webkit-appearance:none}
   .btn:active{opacity:.85}
-  .btn.ghost{background:var(--card);color:var(--ink);border:1px solid var(--ink)}
+  .btn.ghost{background:var(--card);color:var(--ink);border:var(--bw) solid var(--rule)}
   .btn[disabled]{opacity:.32;cursor:default}
   .sub{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);text-align:center;margin:9px 0 0}
   /* the copy number: one knob that moves every loaded photo together, so ten
@@ -235,7 +265,7 @@
     color:var(--ink-soft);text-transform:uppercase}
   .seqVal{font-family:var(--mono);font-size:14px;font-weight:650;color:var(--ink);
     min-width:24px;text-align:center}
-  .seqBtn{width:30px;height:30px;padding:0;border-radius:999px;border:1px solid var(--ink);
+  .seqBtn{width:30px;height:30px;padding:0;border-radius:999px;border:var(--bw) solid var(--rule);
     background:var(--card);color:var(--ink);font-family:var(--sans);font-size:16px;font-weight:650;
     line-height:1;cursor:pointer;-webkit-appearance:none}
   .seqBtn:active{opacity:.85}
@@ -249,7 +279,7 @@
   .status.err{color:var(--stamp)}
 
   .stubs{margin-top:22px;display:flex;flex-direction:column;gap:20px}
-  .stub{background:var(--card);border:1px solid var(--rule);border-radius:var(--r);
+  .stub{background:var(--card);border:var(--bw) solid var(--rule);border-radius:var(--r);
     overflow:hidden;box-shadow:0 1px 0 var(--shadow)}
   .stub .meta{padding:12px 14px 11px;position:relative;border-bottom:1px dashed var(--rule)}
   .stub .name{font-family:var(--mono);font-size:11px;color:var(--ink-soft);word-break:break-all;margin-bottom:2px;padding-right:34px}
@@ -322,7 +352,7 @@
 
   .hidden{display:none !important}
 
-  #viewer{position:fixed;inset:0;background:#0A1016;z-index:50;display:flex;
+  #viewer{position:fixed;inset:0;background:var(--stage);z-index:50;display:flex;
     flex-direction:column;align-items:center;justify-content:center;
     padding:calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px)}
   #stage{position:relative;overflow:hidden;border-radius:var(--r);
@@ -345,20 +375,20 @@
     text-transform:uppercase;pointer-events:none;z-index:2}
   .tags span{background:rgba(10,16,22,.62);color:#FFFFFF;padding:3px 8px;border-radius:6px}
   #viewerCap{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;
-    font-family:var(--mono);font-size:12px;color:#C3D2DC;margin:16px 0 0;width:100%;max-width:420px}
+    font-family:var(--mono);font-size:12px;color:var(--stage-soft);margin:16px 0 0;width:100%;max-width:420px}
   #viewerCap .col{text-align:center}
-  #viewerCap .col div + div{margin-top:4px;font-size:14px;color:#FFFFFF;font-weight:650}
-  #viewerCap .mid{color:#5A6B78;font-size:15px}
+  #viewerCap .col div + div{margin-top:4px;font-size:14px;color:var(--stage-ink);font-weight:650}
+  #viewerCap .mid{color:var(--stage-rule);font-size:15px}
   #viewSharp{margin-top:18px;width:100%;max-width:300px;
     display:flex;flex-direction:column;align-items:center}
   #viewSharp .vLabel{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
-    text-transform:uppercase;color:#8AA0B2;margin-bottom:2px}
+    text-transform:uppercase;color:var(--stage-soft);margin-bottom:2px}
   #viewSharp.busy{opacity:.5}
-  #closeBtn{margin-top:16px;border:1px solid #46586A;background:transparent;color:#DCE6EE;
+  #closeBtn{margin-top:16px;border:var(--bw) solid var(--stage-rule);background:transparent;color:var(--stage-ink);
     font-family:var(--sans);font-size:14px;font-weight:650;padding:10px 26px;
     border-radius:var(--r);cursor:pointer;-webkit-appearance:none}
 
-  #cropper{position:fixed;inset:0;background:#0A1016;z-index:60;display:flex;
+  #cropper{position:fixed;inset:0;background:var(--stage);z-index:60;display:flex;
     flex-direction:column;
     padding:calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px)}
   #cropArea{flex:1;position:relative;display:flex;flex-direction:column;
@@ -377,24 +407,24 @@
      and the four points are laid out in the photo's own view, and this layer
      is what slides that view under the window */
   #cropPan{position:absolute;pointer-events:auto}
-  #cropSize{font-family:var(--mono);font-size:13px;font-weight:650;color:#DCE6EE;letter-spacing:.06em}
+  #cropSize{font-family:var(--mono);font-size:13px;font-weight:650;color:var(--stage-ink);letter-spacing:.06em}
   .tiltWrap{width:100%;max-width:300px;display:flex;flex-direction:column;align-items:center}
   .ticks{align-self:stretch;display:flex;justify-content:space-between;
     margin:0 11px;height:7px}
-  .ticks i{width:1px;height:7px;background:#46586A}
+  .ticks i{width:1px;height:7px;background:var(--stage-rule)}
   .tiltZero{appearance:none;-webkit-appearance:none;background:transparent;border:none;
     padding:6px 14px 2px;margin:0;cursor:pointer;line-height:0}
   .tiltZero::before{content:"";display:block;width:0;height:0;
     border-left:6px solid transparent;border-right:6px solid transparent;
-    border-bottom:8px solid #8AA0B2}
+    border-bottom:8px solid var(--stage-soft)}
   .tiltZero:active::before{border-bottom-color:#FFFFFF}
   .tilt{-webkit-appearance:none;appearance:none;width:100%;max-width:300px;
     height:26px;margin:0;background:transparent;cursor:pointer}
-  .tilt::-webkit-slider-runnable-track{height:2px;background:#46586A;border-radius:2px}
+  .tilt::-webkit-slider-runnable-track{height:2px;background:var(--stage-rule);border-radius:2px}
   .tilt::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
     width:22px;height:22px;margin-top:-10px;border-radius:50%;background:#FFFFFF;
     box-shadow:0 1px 3px rgba(10,16,22,.6)}
-  .tilt::-moz-range-track{height:2px;background:#46586A;border-radius:2px}
+  .tilt::-moz-range-track{height:2px;background:var(--stage-rule);border-radius:2px}
   .tilt::-moz-range-thumb{width:22px;height:22px;border:none;border-radius:50%;
     background:#FFFFFF;box-shadow:0 1px 3px rgba(10,16,22,.6)}
   #shade{position:absolute;inset:0;pointer-events:none}
@@ -456,7 +486,7 @@
      under it is drawn again, larger, just above it */
   #loupe{position:absolute;width:104px;height:104px;border-radius:50%;overflow:hidden;
     border:1.5px solid rgba(255,255,255,.8);box-shadow:0 6px 20px rgba(0,0,0,.55);
-    pointer-events:none;z-index:4;background:#0A1016}
+    pointer-events:none;z-index:4;background:var(--stage)}
   #loupeCv{display:block;width:100%;height:100%}
   #loupe i{position:absolute;left:50%;top:50%;width:19px;height:19px;margin:-10px 0 0 -10px;
     border:1px solid rgba(255,255,255,.9);border-radius:50%}
@@ -470,7 +500,7 @@
   .cropBar{margin-top:14px}
   .ratios{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:9px}
   .ratio{appearance:none;-webkit-appearance:none;background:transparent;cursor:pointer;
-    border:1px solid #46586A;border-radius:10px;padding:8px 2px;color:#DCE6EE;
+    border:var(--bw) solid var(--stage-rule);border-radius:10px;padding:8px 2px;color:var(--stage-ink);
     font-family:var(--mono);font-size:11px;font-weight:650}
   .ratio[aria-pressed="true"]{background:#FFFFFF;border-color:#FFFFFF;color:#16212B}
   .ratios.off{opacity:.35;pointer-events:none}
@@ -483,27 +513,27 @@
      monospace one that suits 16:9 */
   .modes .ratio{font-family:var(--sans);font-size:12.5px;padding:9px 4px}
   .tool{appearance:none;-webkit-appearance:none;background:transparent;cursor:pointer;
-    border:1px solid #46586A;border-radius:10px;padding:9px 4px;color:#DCE6EE;
+    border:var(--bw) solid var(--stage-rule);border-radius:10px;padding:9px 4px;color:var(--stage-ink);
     font-family:var(--sans);font-size:12.5px;font-weight:650}
   .tool:active{background:rgba(255,255,255,.14)}
-  .tool[aria-pressed="true"]{background:rgba(255,255,255,.16);border-color:#8AA0B2}
+  .tool[aria-pressed="true"]{background:rgba(255,255,255,.16);border-color:var(--stage-soft)}
   .applyRow{display:flex;justify-content:center;margin-bottom:8px}
   .cropDone{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .cropDone button, .applyRow button{appearance:none;-webkit-appearance:none;border-radius:var(--r);
     font-family:var(--sans);font-size:14.5px;font-weight:650;padding:12px;cursor:pointer}
   .applyRow button{width:calc(50% - 4px)}
-  #cropCancel, #cropReset{background:transparent;border:1px solid #46586A;color:#DCE6EE}
+  #cropCancel, #cropReset{background:transparent;border:var(--bw) solid var(--stage-rule);color:var(--stage-ink)}
   #cropApply{background:#FFFFFF;border:none;color:#16212B}
   /* Arabic letters join up, so the monospace face and the wide letter-spacing
      that suit the English labels pull them apart and have to lift; a whole
      Arabic sentence also needs its own paragraph direction, or the closing
      full stop is laid out at the wrong end of the line */
-  body.ar .label, body.ar .form-no, body.ar .refresh, body.ar .fieldwrap span,
+  body.ar .label, body.ar .refresh, body.ar .fieldwrap span,
   body.ar .opt small, body.ar .sub, body.ar .status,
   body.ar .tags, body.ar .peekTag, body.ar #viewSharp .vLabel, body.ar .seqLbl{
     font-family:var(--sans);letter-spacing:0;text-transform:none}
   body.ar .label{font-size:12px}
-  body.ar .form-no, body.ar .refresh, body.ar .fieldwrap span{font-size:11px}
+  body.ar .refresh, body.ar .fieldwrap span{font-size:11px}
   body.ar .opt small{font-size:9.5px}
   body.ar .seqLbl{font-size:11px}
   body.ar .sub{font-size:11.5px}
@@ -527,7 +557,7 @@
       </div>
     </div>
     <div class="meta-right">
-      <span class="ver">v1.22</span>
+      <span class="ver">v1.22.1</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
       <div class="lang mode" id="mode">
         <button class="langBtn" type="button" data-m="simple" aria-pressed="true" data-t="mSimple">Simple</button>
@@ -933,13 +963,17 @@
     presetPress(i);
     fitRestore();
   }
+  function cssVar(n){
+    try { return getComputedStyle(document.body).getPropertyValue(n).trim(); }
+    catch (e){ return ""; }
+  }
   /* Two things are painted outside the page and so cannot see a variable set
      on the body: the area the phone shows when the page is pulled past its
      end, and the browser's own bar. Both are handed the palette's own top
      colour, read back from the stylesheet rather than written out again here,
      so the two blocks above stay the only place any of this is decided. */
   function themePaint(){
-    var top = getComputedStyle(document.body).getPropertyValue("--paper").trim();
+    var top = cssVar("--paper");
     if (!top) return;
     document.documentElement.style.background = top;
     var m = document.querySelector('meta[name="theme-color"]');
@@ -4006,7 +4040,7 @@
     if (loupeCv.width !== L){ loupeCv.width = L; loupeCv.height = L; }
     var x = loupeCv.getContext("2d", cmOK ? { colorSpace: "display-p3" } : undefined);
     x.setTransform(1, 0, 0, 1, 0, 0);
-    x.fillStyle = "#0A1016"; x.fillRect(0, 0, L, L);
+    x.fillStyle = cssVar("--stage") || "#120F10"; x.fillRect(0, 0, L, L);
     x.imageSmoothingEnabled = true;
     if (x.imageSmoothingQuality) x.imageSmoothingQuality = "high";
     /* the photo through the very same transform again, only zoomed and shifted
@@ -4744,7 +4778,61 @@
   // ===== PDF IN — end =====
 
   cmProbe();
+  /* ---- the paper's tooth --------------------------------------------------
+     It is drawn here rather than written into the stylesheet, and that is not
+     a preference. Safari will not run an SVG filter inside a background image
+     — it draws nothing at all and reports nothing — which is how v1.22 reached
+     the phone with a flat background where a textured one was intended. A
+     canvas is what every other pixel in this app is made with, so the tooth is
+     made with one too: no file, nothing fetched, still one page on its own.
+
+     Paper has two scales and so does this. A small grid of random values is
+     smoothed and read back at every pixel, which gives the slow mottle; a
+     fine grain is laid over it. The grid wraps, so the tile repeats with no
+     seam anywhere. The value is signed: where it runs light the pixel is
+     white and where it runs dark it is black, the strength carried in the
+     alpha of each — so one layer both lifts and deepens the paper without a
+     blend mode, which is the other thing Safari is unreliable about. The
+     alpha is quantised because a PNG of pure noise barely compresses, and
+     twenty-one steps are more than an eye can separate at this strength. */
+  function grainMake(){
+    var N = 144, G = 20, c = null;
+    try {
+      var g = new Float32Array(G * G), i, j;
+      for (i = 0; i < g.length; i++) g[i] = Math.random() * 2 - 1;
+      c = document.createElement("canvas");
+      c.width = N; c.height = N;
+      var x = c.getContext("2d");
+      if (!x){ kill(c); return; }
+      var im = x.createImageData(N, N), d = im.data, k = N / G;
+      var sm = function(t){ return t * t * (3 - 2 * t); };
+      var y0, y1, ty, x0, x1, tx, a, b, v, o, m;
+      for (j = 0; j < N; j++){
+        y0 = Math.floor(j / k); ty = sm(j / k - y0);
+        y1 = (y0 + 1) % G; y0 %= G;
+        for (i = 0; i < N; i++){
+          x0 = Math.floor(i / k); tx = sm(i / k - x0);
+          x1 = (x0 + 1) % G; x0 %= G;
+          a = g[y0*G+x0] + (g[y0*G+x1] - g[y0*G+x0]) * tx;
+          b = g[y1*G+x0] + (g[y1*G+x1] - g[y1*G+x0]) * tx;
+          v = (a + (b - a) * ty) * 0.30 + (Math.random() * 2 - 1) * 0.70;
+          o = (j * N + i) * 4;
+          /* paper is mostly shadow: the side that lifts is held to half the
+             side that deepens, or the tooth reads as dirt rather than fibre */
+          m = Math.abs(v) * (v > 0 ? 118 : 235);
+          d[o] = d[o+1] = d[o+2] = v > 0 ? 255 : 0;
+          d[o+3] = Math.min(240, Math.round(m / 12) * 12);
+        }
+      }
+      x.putImageData(im, 0, 0);
+      document.documentElement.style.setProperty(
+        "--grain", 'url("' + c.toDataURL("image/png") + '")');
+    } catch (e){}
+    kill(c);
+  }
+
   webpProbe();
+  grainMake();
   applyMode();
   applyLang();
 })();
