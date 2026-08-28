@@ -28,40 +28,103 @@
      wants a neutral surround whichever palette the app is wearing. */
   :root{
     color-scheme: light;
-    --paper:#D9E4EC;
-    --paper2:#D9E4EC;
-    --card:#FDFCF8;
-    --ink:#16212B;
-    --ink-soft:#5A6B78;
-    --rule:#A8BAC7;
-    --fill:#16212B;
-    --on-fill:#FFFFFF;
-    --on-fill-dim:#9FB4C2;
-    --stamp:#BF3B2B;
-    --shot:#EFEEE8;
-    --shadow:rgba(22,33,43,.14);
-    --press:rgba(22,33,43,.08);
-    --thumb-sh:rgba(22,33,43,.35);
     --r:14px;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
     --sans: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+    /* the gold is the one thing both palettes share, which is what keeps them
+       two faces of one app rather than two apps. Three tones, because a flat
+       band reads as a printed line and a graded one reads as metal. */
+    --gold-lo:#8A6A28;
+    --gold-hi:#E3C36A;
+    --gold-sh:#F7E9B4;
+
+    /* The paper, drawn rather than photographed. The tooth is a noise field
+       the browser generates from the filter written into this line — no image
+       file, nothing fetched, nothing sitting beside index.html. Both filters
+       zero the colour and take the alpha from the noise, so the grain darkens
+       the paper instead of greying it. The mark on the band is the same idea:
+       a shape, not a picture. The gold in it is written out because a data URI
+       cannot read a variable; it is the only colour in the file outside these
+       blocks, and it is --gold-hi. */
+    --grain:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='260'%20height='260'%3E%3Cfilter%20id='g'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='.85'%20numOctaves='3'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20values='0%200%200%200%200%200%200%200%200%200%200%200%200%200%200%20.85%200%200%200%200'/%3E%3C/filter%3E%3Cfilter%20id='m'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='.013'%20numOctaves='4'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20values='0%200%200%200%200%200%200%200%200%200%200%200%200%200%200%20.6%200%200%200%20-.18'/%3E%3C/filter%3E%3Crect%20width='260'%20height='260'%20filter='url(%23m)'/%3E%3Crect%20width='260'%20height='260'%20filter='url(%23g)'/%3E%3C/svg%3E");
+    --star:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2016%2016'%3E%3Cpath%20d='M8%200C8.6%204.4%2011.6%207.4%2016%208%2011.6%208.6%208.6%2011.6%208%2016%207.4%2011.6%204.4%208.6%200%208%204.4%207.4%207.4%204.4%208%200Z'%20fill='%23E3C36A'/%3E%3C/svg%3E");
+  }
+
+  /* ---- Simple: cream paper, dark olive ink ------------------------------- */
+  body.simple{
+    --paper:#F0E9DA;
+    --paper2:#E6DCC6;
+    --card:#FAF6EC;
+    --ink:#2E3018;
+    --ink-soft:#6F6A4C;
+    --rule:#C9BC98;
+    --fill:#43441F;
+    --on-fill:#F4EEDD;
+    --on-fill-dim:#B4B189;
+    --stamp:#A6371F;
+    --shot:#E3D9C2;
+    --shadow:rgba(62,58,30,.16);
+    --press:rgba(62,58,30,.09);
+    --thumb-sh:rgba(62,58,30,.32);
+    --grain-a:.16;
+  }
+
+  /* ---- Advanced: dark maroon falling into black -------------------------
+     Two things deliberately part company with the study this was drawn from.
+     A pressed button is filled with gold rather than with a darker black:
+     which button is pressed is the whole of what the user has to go on, and
+     on the black half of the page a dark fill against a dark rest is a
+     difference nobody can see. And a warning goes gold too, because the red
+     the app has always used for one is invisible on maroon. */
+  body:not(.simple){
+    --paper:#4E1319;
+    --paper2:#131011;
+    --card:rgba(0,0,0,.26);
+    --ink:#EFE2CB;
+    --ink-soft:#B9A184;
+    --rule:#7E5F36;
+    --fill:#D9BE7C;
+    --on-fill:#241A0C;
+    --on-fill-dim:#5E4B27;
+    --stamp:#E9B44C;
+    --shot:#241D1F;
+    --shadow:rgba(0,0,0,.45);
+    --press:rgba(255,255,255,.10);
+    --thumb-sh:rgba(0,0,0,.55);
+    --grain-a:.22;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;background:var(--paper)}
+  html{margin:0;background:#F0E9DA}
+  body{margin:0}
+  /* the wash and the tooth are both fixed to the screen, so they are drawn
+     once and cost nothing more however long the list of photos grows — and a
+     canvas the size of the whole document is never made */
+  body::before,body::after{content:"";position:fixed;inset:0;pointer-events:none}
+  body::before{z-index:-2;
+    background:linear-gradient(180deg,var(--paper) 0%,var(--paper) 22%,var(--paper2) 72%)}
+  body::after{z-index:-1;background-image:var(--grain);opacity:var(--grain-a)}
   body{
-    background:var(--paper);color:var(--ink);
+    background:transparent;color:var(--ink);
     font-family:var(--sans);font-size:16px;line-height:1.5;
     padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 24px);
     -webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;
   }
-  .wrap{max-width:520px;margin:0 auto;padding:18px 18px 0}
+  .wrap{position:relative;max-width:520px;margin:0 auto;padding:18px 18px 0}
   .byline{font-family:var(--mono);font-size:10px;letter-spacing:.18em;
     color:var(--ink-soft);text-transform:uppercase;margin-bottom:6px}
   /* the two columns stretch to one height and each toggle is pushed to the
      bottom of its own, so the language on the left and the mode on the right
      land on the same line however long the title or the version happens to be */
-  header{border-bottom:1px solid var(--rule);padding-bottom:14px;margin-bottom:22px;
+  header{padding-bottom:14px;
     display:flex;align-items:stretch;justify-content:space-between;gap:12px}
+  /* the band under the header, and the app's mark sitting on it. The gradient
+     runs across the band rather than along it: that is what reads as metal */
+  .grule{position:relative;height:3px;margin:0 0 22px;border-radius:2px;
+    background:linear-gradient(180deg,var(--gold-lo) 0%,var(--gold-hi) 40%,
+      var(--gold-sh) 50%,var(--gold-hi) 60%,var(--gold-lo) 100%)}
+  .grule i{position:absolute;left:50%;top:50%;width:26px;height:15px;margin:-7.5px 0 0 -13px;
+    background:var(--paper) var(--star) center/13px 13px no-repeat}
   /* the title gave up two points and a little of its letter-spacing to make
      room for the mode toggle: on a 375-point phone the old size left the
      word running under the version number */
@@ -186,7 +249,8 @@
   .status.err{color:var(--stamp)}
 
   .stubs{margin-top:22px;display:flex;flex-direction:column;gap:20px}
-  .stub{background:var(--card);border-radius:var(--r);overflow:hidden;box-shadow:0 1px 0 var(--shadow)}
+  .stub{background:var(--card);border:1px solid var(--rule);border-radius:var(--r);
+    overflow:hidden;box-shadow:0 1px 0 var(--shadow)}
   .stub .meta{padding:12px 14px 11px;position:relative;border-bottom:1px dashed var(--rule)}
   .stub .name{font-family:var(--mono);font-size:11px;color:var(--ink-soft);word-break:break-all;margin-bottom:2px;padding-right:34px}
   .stub .out{font-family:var(--mono);font-size:11px;color:var(--ink);word-break:break-all;margin-bottom:4px;padding-right:34px}
@@ -450,7 +514,7 @@
   @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 </head>
-<body>
+<body class="simple">
 <div class="wrap">
 
   <div class="byline">Malek Barbari</div>
@@ -471,6 +535,7 @@
       </div>
     </div>
   </header>
+  <div class="grule"><i></i></div>
 
   <div class="label" data-t="lFormat">Format</div>
   <div class="row3" id="formats">
@@ -868,8 +933,21 @@
     presetPress(i);
     fitRestore();
   }
+  /* Two things are painted outside the page and so cannot see a variable set
+     on the body: the area the phone shows when the page is pulled past its
+     end, and the browser's own bar. Both are handed the palette's own top
+     colour, read back from the stylesheet rather than written out again here,
+     so the two blocks above stay the only place any of this is decided. */
+  function themePaint(){
+    var top = getComputedStyle(document.body).getPropertyValue("--paper").trim();
+    if (!top) return;
+    document.documentElement.style.background = top;
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", top);
+  }
   function applyMode(){
     document.body.classList.toggle("simple", mode === "simple");
+    themePaint();
     each("#mode .langBtn", function(b){
       b.setAttribute("aria-pressed", b.dataset.m === mode ? "true" : "false");
     });
