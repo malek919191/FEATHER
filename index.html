@@ -57,12 +57,17 @@
   .wrap{max-width:520px;margin:0 auto;padding:18px 18px 0}
   .byline{font-family:var(--mono);font-size:10px;letter-spacing:.18em;
     color:var(--ink-soft);text-transform:uppercase;margin-bottom:6px}
+  /* the two columns stretch to one height and each toggle is pushed to the
+     bottom of its own, so the language on the left and the mode on the right
+     land on the same line however long the title or the version happens to be */
   header{border-bottom:1px solid var(--rule);padding-bottom:14px;margin-bottom:22px;
-    display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-  h1{font-size:17px;font-weight:700;margin:0;letter-spacing:.14em;color:var(--ink)}
-  .meta-right{text-align:right}
-  .form-no{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-soft);
-    letter-spacing:.08em;text-transform:uppercase}
+    display:flex;align-items:stretch;justify-content:space-between;gap:12px}
+  /* the title gave up two points and a little of its letter-spacing to make
+     room for the mode toggle: on a 375-point phone the old size left the
+     word running under the version number */
+  h1{font-size:15px;font-weight:700;margin:0;letter-spacing:.10em;color:var(--ink)}
+  .meta-right{display:flex;flex-direction:column;align-items:flex-end;
+    text-align:right;flex:0 0 auto;min-width:0}
   .ver{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-soft);
     letter-spacing:.08em;margin-top:3px;opacity:.75}
   .refresh{appearance:none;-webkit-appearance:none;cursor:pointer;
@@ -75,11 +80,28 @@
   /* the column takes the width of its widest child, which is the title, so the
      toggle beneath it ends exactly where the last T does; the negative margin
      trims the letter-spacing the title trails after that T */
-  .head-left{flex:0 1 auto;min-width:0}
-  .head-left h1{margin-right:-.14em}
-  .lang{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:11px;width:100%}
+  .head-left{display:flex;flex-direction:column;flex:0 1 auto;min-width:0}
+  .head-left h1{margin-right:-.10em}
+  .lang{display:grid;grid-template-columns:1fr 1fr;gap:6px;
+    margin-top:auto;padding-top:11px;width:100%}
+  .mode{align-self:stretch}
+  .mode .langBtn{font-size:12px;padding:9px 3px}
+  /* the title is the widest thing on the left; on the narrowest phones the
+     mode toggle is what has to give, and it gives by tightening, not wrapping */
+  @media (max-width:360px){
+    h1{font-size:13.5px}
+    .mode .langBtn{font-size:11px;padding:9px 2px}
+  }
+  @media (max-width:340px){
+    h1{letter-spacing:.06em}
+    .head-left h1{margin-right:-.06em}
+    .mode .langBtn{font-size:10.5px;padding:9px 1px}
+  }
+  /* one height for both toggles whatever type sits in them, so the language
+     and the mode line up exactly rather than nearly */
   .langBtn{appearance:none;-webkit-appearance:none;background:var(--card);cursor:pointer;
-    border:1px solid var(--rule);border-radius:11px;padding:11px 4px;
+    border:1px solid var(--rule);border-radius:11px;padding:11px 4px;min-height:39px;
+    display:flex;align-items:center;justify-content:center;text-align:center;
     color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:650;line-height:1.15;
     transition:background .15s,border-color .15s,color .15s}
   .langBtn[aria-pressed="true"]{background:var(--fill);border-color:var(--fill);color:var(--on-fill)}
@@ -89,6 +111,7 @@
   /* the format row takes a fourth column only on a device that can really
      encode WEBP; everywhere else it stays the three it has always been */
   #formats.wide4{grid-template-columns:repeat(4,1fr)}
+  .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:18px}
   .row5{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
   .row6{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}
   .opt{appearance:none;-webkit-appearance:none;background:var(--card);cursor:pointer;
@@ -218,6 +241,21 @@
   footer{margin-top:26px;border-top:1px solid var(--rule);padding-top:12px;
     font-family:var(--mono);font-size:10px;letter-spacing:.18em;
     color:var(--ink-soft);text-transform:uppercase}
+  /* Simple is this same screen with the advanced rows folded away — one app,
+     one pipeline, the same settings underneath. Everything hidden here is also
+     switched off in the script: a control the user cannot see must never go on
+     quietly acting on his photos. */
+  body.simple #sLabel, body.simple #scales, body.simple #customRow, body.simple #sp1,
+  body.simple #qLabel, body.simple #levels, body.simple #sp2,
+  body.simple #fitLabel, body.simple #fitRow,
+  body.simple #sharpLabel, body.simple #sharpRow,
+  body.simple #matteWrap, body.simple #seqRow,
+  body.simple .stub .name, body.simple .stub .out,
+  body.simple #viewSharp{display:none !important}
+  body:not(.simple) #pLabel, body:not(.simple) #presets{display:none !important}
+  /* with the two names gone it is the numbers the delete button sits over */
+  body.simple .stub .nums{padding-right:34px}
+
   .hidden{display:none !important}
 
   #viewer{position:fixed;inset:0;background:#0A1016;z-index:50;display:flex;
@@ -424,11 +462,14 @@
         <button class="langBtn" type="button" data-l="ar" aria-pressed="false">عربي</button>
       </div>
     </div>
-    <span class="meta-right">
-      <span class="form-no" data-t="onDevice">On-Device</span>
-      <span class="ver">v1.21.13</span>
+    <div class="meta-right">
+      <span class="ver">v1.22</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
-    </span>
+      <div class="lang mode" id="mode">
+        <button class="langBtn" type="button" data-m="simple" aria-pressed="true" data-t="mSimple">Simple</button>
+        <button class="langBtn" type="button" data-m="adv" aria-pressed="false" data-t="mAdv">Advanced</button>
+      </div>
+    </div>
   </header>
 
   <div class="label" data-t="lFormat">Format</div>
@@ -448,6 +489,14 @@
     </div>
   </div>
 
+  <div class="label" id="pLabel" data-t="lPreset">Size</div>
+  <div class="row4" id="presets">
+    <button class="opt" data-p="0" aria-pressed="true" data-t="pBest">Best<small data-t="sOrig">Orig</small></button>
+    <button class="opt" data-p="1" aria-pressed="false" data-t="pMed">Medium<small>900</small></button>
+    <button class="opt" data-p="2" aria-pressed="false" data-t="pSml">Small<small>700</small></button>
+    <button class="opt" data-p="3" aria-pressed="false" data-t="pTiny">Tiny<small>350</small></button>
+  </div>
+
   <div class="label" id="sLabel">Longest Side</div>
   <div class="row6" id="scales">
     <button class="opt" data-w="0" aria-pressed="true">1:1<small data-t="sOrig">Orig</small></button>
@@ -461,7 +510,7 @@
     <label class="fieldwrap"><span data-t="fW">W</span><input id="cw" type="number" inputmode="numeric" placeholder="Width" data-tp="pW"></label>
     <label class="fieldwrap"><span data-t="fH">H</span><input id="ch" type="number" inputmode="numeric" placeholder="Height" data-tp="pH"></label>
   </div>
-  <div class="spacer"></div>
+  <div class="spacer" id="sp1"></div>
 
   <div class="label" id="qLabel">Quality</div>
   <div class="row5" id="levels">
@@ -472,15 +521,15 @@
     <button class="opt" data-q="0.30" aria-pressed="false" data-t="qLeast">Least<small>30</small></button>
   </div>
 
-  <div class="spacer"></div>
+  <div class="spacer" id="sp2"></div>
 
-  <div class="label" data-t="lFit">Target Size</div>
+  <div class="label" id="fitLabel" data-t="lFit">Target Size</div>
   <div class="custom one" id="fitRow">
     <label class="fieldwrap"><span data-t="fKB">KB</span><input id="fkb" type="number" inputmode="numeric" placeholder="e.g. 300" data-tp="pFit"></label>
   </div>
 
-  <div class="label" data-t="lSharp">Sharpness</div>
-  <div class="sharpRow">
+  <div class="label" id="sharpLabel" data-t="lSharp">Sharpness</div>
+  <div class="sharpRow" id="sharpRow">
     <input id="sharp" class="sharpBar" type="range" min="0" max="1" step="0.05" value="0" data-ta="lSharp" aria-label="Sharpness">
     <div class="ticks light"><i></i><i></i><i></i></div>
   </div>
@@ -644,6 +693,25 @@
      on its own in the viewer, after which it stops following sharpAll */
   var sharpAll = 0, sharps = [], stubEls = [], sharpToken = 0;
 
+  /* Simple and Advanced are one app, not two: the same screen with the
+     advanced rows folded away, and the same pipeline underneath. A preset
+     does not grow a second set of settings beside the app's own — it presses
+     the very rows it hides, exactly as a target size does, so switching to
+     Advanced simply shows what the preset had already chosen.
+
+     Best leaves the photo at its own size, and gets no sharpening at all:
+     sharpening is there to give back what a downscale takes, there is no
+     downscale here to give anything back from, and running the unsharp mask
+     over a full twelve-megapixel frame would put two more copies of it in
+     memory on every photo of every batch for nothing. */
+  var PRESETS = [
+    { w:0,   q:0.90, s:0    },
+    { w:900, q:0.60, s:0.20 },
+    { w:700, q:0.45, s:0.30 },
+    { w:350, q:0.30, s:0.40 }
+  ];
+  var mode = "simple", presetIdx = 0;
+
   var $ = function(id){ return document.getElementById(id); };
   var picker = $("picker"), pickBtn = $("pick"), subEl = $("sub"),
       statusEl = $("status"), stubs = $("stubs"), totalBox = $("total"),
@@ -661,7 +729,8 @@
      re-encoded or re-read, so the results on screen stay exactly as they are. */
   var STR = {
     en: {
-      onDevice:"On-Device", update:"\u21BB Update",
+      update:"\u21BB Update", mSimple:"Simple", mAdv:"Advanced",
+      lPreset:"Size", pBest:"Best", pMed:"Medium", pSml:"Small", pTiny:"Tiny",
       lFormat:"Format", fSource:"Source", sOrig:"Orig",
       lMatte:"Background", mClear:"Transparent", mWhite:"White", mBlack:"Black",
       lLongest:"Longest Side", sPx:"Px", fCustom:"Custom",
@@ -695,7 +764,8 @@
            "sheet: Save Image puts it in Photos, Save to Files keeps the exact file shown here."
     },
     ar: {
-      onDevice:"على الجهاز", update:"\u21BB تحديث",
+      update:"\u21BB تحديث", mSimple:"بسيط", mAdv:"متقدم",
+      lPreset:"الحجم", pBest:"الأفضل", pMed:"متوسط", pSml:"صغير", pTiny:"الأصغر",
       lFormat:"الصيغة", fSource:"الأصل", sOrig:"كما هي",
       lMatte:"الخلفية", mClear:"شفافة", mWhite:"بيضاء", mBlack:"سوداء",
       lLongest:"الضلع الأطول", sPx:"بكسل", fCustom:"مخصص",
@@ -771,6 +841,55 @@
     });
   });
 
+  /* ---- Simple and Advanced ----------------------------------------------
+     The fold itself is one class on the body and lives in the stylesheet.
+     What lives here is the other half of the promise: everything folded away
+     also stops applying. A target size typed in Advanced must not go on
+     quietly overruling the preset the user has just pressed, and a sharpness
+     set on one photo in the compare viewer must not either — but both keep
+     their values, and both come back into force with the rows they belong to.
+  */
+  function presetPress(i){
+    each("#presets .opt", function(o){
+      o.setAttribute("aria-pressed", parseInt(o.dataset.p, 10) === i ? "true" : "false");
+    });
+  }
+  /* the preset presses the app's own rows rather than settings of its own,
+     so Advanced opens showing exactly what Simple had been doing */
+  function presetApply(i){
+    var p = PRESETS[i];
+    presetIdx = i;
+    customMode = false;
+    customRow.classList.add("hidden");
+    targetW = p.w;
+    quality = p.q;
+    sharpAll = p.s;
+    $("sharp").value = String(p.s);
+    presetPress(i);
+    fitRestore();
+  }
+  function applyMode(){
+    document.body.classList.toggle("simple", mode === "simple");
+    each("#mode .langBtn", function(b){
+      b.setAttribute("aria-pressed", b.dataset.m === mode ? "true" : "false");
+    });
+    /* coming back into Simple, the pressed preset is made true again: the row
+       would otherwise show Best while the photo ran at whatever Advanced was
+       left on, and the row is the only thing the user has to go on */
+    if (mode === "simple") presetApply(presetIdx);
+    refreshGate();
+  }
+  try { if (localStorage.getItem("fw-mode") === "adv") mode = "adv"; } catch (e){}
+  each("#mode .langBtn", function(b){
+    b.addEventListener("click", function(){
+      if (b.dataset.m === mode) return;
+      mode = b.dataset.m;
+      try { localStorage.setItem("fw-mode", mode); } catch (e){}
+      applyMode();
+      rerender();
+    });
+  });
+
   /* On the home screen iOS freezes the app instead of closing it, so a new
      version is never requested; a plain reload can also come straight back
      from cache. Loading an address the phone has never seen forces a real
@@ -823,6 +942,7 @@
       });
     });
   }
+  bind("presets", function(b){ presetApply(parseInt(b.dataset.p, 10)); });
   bind("formats", function(b){ format = b.dataset.f; });
   bind("mattes",  function(b){ matte = b.dataset.m; });
   bind("levels",  function(b){ quality = parseFloat(b.dataset.q); fitOff(); });
@@ -902,7 +1022,12 @@
     if (ready()) run(); else showOriginals();
   }
 
-  function effSharp(i){ return sharps[i] === null || sharps[i] === undefined ? sharpAll : sharps[i]; }
+  function effSharp(i){
+    /* the viewer's slider is Advanced's as well: folded away, every photo
+       takes the preset's own value, and its own is kept for the return */
+    if (mode === "simple") return sharpAll;
+    return sharps[i] === null || sharps[i] === undefined ? sharpAll : sharps[i];
+  }
   function readyFiles(){ return results.filter(Boolean); }
 
   /* an iPhone photo arrives as HEIC when it comes from the Files app or a
@@ -1006,16 +1131,20 @@
     }
     return true;
   }
+  /* a target size is Advanced's own. Folded away in Simple it also stops
+     applying, so the preset that is showing is the one that actually runs;
+     the number the user typed is kept and comes back with its row. */
+  function fitOn(){ return fitKB > 0 && mode !== "simple"; }
   function ready(){
     var t = longestTarget();
     /* under a target size the app settles both of them itself, so there is
        nothing left for the user to fill in */
-    if (fitKB > 0) return true;
+    if (fitOn()) return true;
     return t !== null && (quality !== null || lossless());
   }
 
   function refreshGate(){
-    var ll = lossless(), fit = fitKB > 0;
+    var ll = lossless(), fit = fitOn();
     /* both rows are dimmed while a target size is in force: they are showing
        what was chosen, not waiting to be chosen */
     levelsRow.classList.toggle("muted", ll || fit);
@@ -1029,7 +1158,7 @@
     fwPaintSeq();
   }
 
-  function fitBytes(){ return fitKB > 0 ? fitKB * 1000 : 0; }
+  function fitBytes(){ return fitOn() ? fitKB * 1000 : 0; }
   /* the size the user already has chosen is the ceiling the search starts at,
      and an empty Custom pair simply means the photo's own size */
   function fitStart(){ var v = longestTarget(); return v === null ? 0 : v; }
@@ -1074,7 +1203,7 @@
      pressed himself. Photos that landed elsewhere keep their own figures on
      their own cards; the rows show where most of them ended up. */
   function fitPaint(){
-    if (!fitKB) return;
+    if (!fitOn()) return;
     var ws = {}, qs = {}, i, p;
     for (i = 0; i < fitPicks.length; i++){
       p = fitPicks[i];
@@ -4538,6 +4667,7 @@
 
   cmProbe();
   webpProbe();
+  applyMode();
   applyLang();
 })();
 </script>
