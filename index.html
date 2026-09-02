@@ -408,6 +408,9 @@
      is what slides that view under the window */
   #cropPan{position:absolute;pointer-events:auto}
   #cropSize{font-family:var(--mono);font-size:13px;font-weight:650;color:var(--stage-ink);letter-spacing:.06em}
+  /* the same line says a word instead of a figure when Auto finds nothing, and
+     a word — an Arabic one above all — wants the face the labels use */
+  #cropSize.say{font-family:var(--sans);letter-spacing:0;font-size:12.5px}
   .tiltWrap{width:100%;max-width:300px;display:flex;flex-direction:column;align-items:center}
   .ticks{align-self:stretch;display:flex;justify-content:space-between;
     margin:0 11px;height:7px}
@@ -504,7 +507,8 @@
     font-family:var(--mono);font-size:11px;font-weight:650}
   .ratio[aria-pressed="true"]{background:#FFFFFF;border-color:#FFFFFF;color:#16212B}
   .ratios.off{opacity:.35;pointer-events:none}
-  .tools{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:9px}
+  /* four across since Auto joined them, so the labels take a little less room */
+  .tools{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:9px}
   /* which shape the crop has, as a choice rather than a switch: the pressed one
      says where you are, and the other says where else you can go */
   .modes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:9px}
@@ -513,8 +517,8 @@
      monospace one that suits 16:9 */
   .modes .ratio{font-family:var(--sans);font-size:12.5px;padding:9px 4px}
   .tool{appearance:none;-webkit-appearance:none;background:transparent;cursor:pointer;
-    border:var(--bw) solid var(--stage-rule);border-radius:10px;padding:9px 4px;color:var(--stage-ink);
-    font-family:var(--sans);font-size:12.5px;font-weight:650}
+    border:var(--bw) solid var(--stage-rule);border-radius:10px;padding:9px 2px;color:var(--stage-ink);
+    font-family:var(--sans);font-size:11.5px;font-weight:650}
   .tool:active{background:rgba(255,255,255,.14)}
   .tool[aria-pressed="true"]{background:rgba(255,255,255,.16);border-color:var(--stage-soft)}
   .applyRow{display:flex;justify-content:center;margin-bottom:8px}
@@ -557,7 +561,7 @@
       </div>
     </div>
     <div class="meta-right">
-      <span class="ver">v1.22.1</span>
+      <span class="ver">v1.23</span>
       <button class="refresh" id="reload" type="button" data-t="update">↻ Update</button>
       <div class="lang mode" id="mode">
         <button class="langBtn" type="button" data-m="simple" aria-pressed="true" data-t="mSimple">Simple</button>
@@ -747,6 +751,7 @@
       <button class="tool" id="rotBtn" data-t="bRotate">Rotate 90&deg;</button>
       <button class="tool" id="flipH" aria-pressed="false" data-t="bFlipH">Flip H</button>
       <button class="tool" id="flipV" aria-pressed="false" data-t="bFlipV">Flip V</button>
+      <button class="tool" id="autoBtn" aria-pressed="false" data-t="bAuto">Auto</button>
     </div>
     <div class="applyRow"><button id="cropApply" data-t="bApply">Apply</button></div>
     <div class="cropDone">
@@ -849,6 +854,7 @@
       tOrig:"Original", tComp:"Compressed",
       vSharp:"Sharpness \u2014 This Photo", bClose:"Close",
       rFree:"Free", bRotate:"Rotate 90\u00B0", bFlipH:"Flip H", bFlipV:"Flip V",
+      bAuto:"Auto", autoNone:"No page edges found",
       mRect:"Normal", mQuad:"Custom", mBend:"Curve",
       aTilt:"Tilt", aLevel:"Level",
       bApply:"Apply", bCancel:"Cancel", bReset:"Reset",
@@ -884,6 +890,7 @@
       tOrig:"الأصلية", tComp:"المضغوطة",
       vSharp:"الحدة \u2014 لهذه الصورة", bClose:"إغلاق",
       rFree:"حر", bRotate:"تدوير 90\u00B0", bFlipH:"قلب أفقي", bFlipV:"قلب رأسي",
+      bAuto:"تلقائي", autoNone:"لم يجد حدود ورقة",
       mRect:"عادي", mQuad:"محدد", mBend:"منحني",
       aTilt:"ميلان", aLevel:"تسوية",
       bApply:"تطبيق", bCancel:"إلغاء", bReset:"إعادة ضبط",
@@ -3261,6 +3268,7 @@
   }
 
   async function openEditor(idx){
+    autoDrop();
     cropIdx = idx;
     var e = edits[idx];
     cRot = e ? (e.rot || 0) : 0;
@@ -3440,7 +3448,7 @@
     $("dimB").style.cssText = "left:0;top:" + (fy+fh) + "px;width:100%;height:" + Math.max(0, dispH-fy-fh) + "px";
     $("dimL").style.cssText = "left:0;top:" + fy + "px;width:" + fx + "px;height:" + fh + "px";
     $("dimR").style.cssText = "left:" + (fx+fw) + "px;top:" + fy + "px;width:" + Math.max(0, dispW-fx-fw) + "px;height:" + fh + "px";
-    cropSize.textContent = Math.round(fw / viewK) + " \u00D7 " + Math.round(fh / viewK);
+    if (!autoTimer) cropSize.textContent = Math.round(fw / viewK) + " \u00D7 " + Math.round(fh / viewK);
   }
 
   /* The four points are held in the photo's own pixels, never in the pixels of
@@ -3882,7 +3890,7 @@
        view but cannot inflate the figure. */
     var sz = qFit(qSizeBend(cQuad, W),
                   qAspectBend(cQuad, W, qAspect(cQuad, bw0, bh0, cLens)));
-    cropSize.textContent = sz.w + " \u00D7 " + sz.h;
+    if (!autoTimer) cropSize.textContent = sz.w + " \u00D7 " + sz.h;
   }
 
   /* Custom and Curve keep their four points while Normal is in front, and the
@@ -4001,7 +4009,7 @@
     ev.preventDefault(); ev.stopPropagation();
     var e = near.e;
     var pull = quadPull([e, (e + 1) % 4], p, cQuad.slice(0));
-    qOwn = true;
+    qOwn = true; autoDrop();
     qHold = 4 + e; qAim = { x: x, y: y };
     quadBox.classList.add("pulling");
     loupeTick();
@@ -4103,7 +4111,7 @@
     layoutFrame(); if (qOn) layoutQuad();
   });
 
-  $("modeRect").addEventListener("click", function(){ if (qOn) quadOn(false, false); });
+  $("modeRect").addEventListener("click", function(){ if (qOn){ autoDrop(); quadOn(false, false); } });
   $("modeQuad").addEventListener("click", function(){ if (!qOn || qCurve) quadOn(true, false); });
   $("modeBend").addEventListener("click", function(){ if (!qCurve) quadOn(true, true); });
 
@@ -4122,6 +4130,7 @@
   });
 
   $("cropReset").addEventListener("click", function(){
+    autoDrop();
     cRot = 0; cFH = false; cFV = false; cFree = 0; ratioVal = 0;
     $("flipH").setAttribute("aria-pressed", "false");
     $("flipV").setAttribute("aria-pressed", "false");
@@ -4422,7 +4431,7 @@
          be taken off first, or the shape is read against the whole screen. */
       var box = cropBox.getBoundingClientRect();
       var mv = n < 4 ? [n] : [edgeN, (edgeN + 1) % 4];
-      qOwn = true;
+      qOwn = true; autoDrop();
       qHold = n; qAim = null;
       g.classList.add("held");
       loupeTick();
@@ -4663,6 +4672,440 @@
       catch (e){ undo(); if (e && e.name === "AbortError") return; }
     } else { undo(); }
     setStatus("errShare", true);
+  });
+
+  /* ---- Auto: the page found for you --------------------------------------
+     What the four points are for is a page photographed at an angle, and
+     placing them is the one thing this editor asks the user to be exact about.
+     Auto does the placing: it looks for the four long straight edges of
+     whatever rectangular thing is in the shot — a page, a book, a whiteboard,
+     a screen — and puts the corners where they cross.
+
+     It reads a copy of the photo about four hundred pixels across and never
+     the twelve megapixels behind it. An edge that matters is a long one and
+     survives the shrinking; the grain and the print that would drown it do
+     not. Everything after that is arithmetic over a third of a megapixel,
+     which is why it costs a moment rather than a wait.
+
+     Three steps. The change from pixel to pixel is measured, which lights the
+     edges up. Every lit pixel then votes for the straight line it would lie
+     on — an ordinary Hough transform, except that a pixel votes only for the
+     handful of directions its own change allows rather than for all hundred
+     and eighty, which is both quicker and far less noisy. The lines with the
+     most votes are the candidates, and every way of taking two roughly
+     parallel ones with two more across them is tried; the winner is the shape
+     whose four edges are most fully backed by real change in the photo, with
+     a lean towards the larger one, since a page is usually the biggest flat
+     thing in the frame.
+
+     Opposite edges of a page are *not* parallel in the photo — that is the
+     whole reason this editor exists — so a pair is accepted on the strength
+     of meeting far outside the picture rather than on not meeting at all.
+
+     The photo's own four sides are thrown in among the candidates, worth
+     little enough that a shape made only of them can never win. That is for
+     the page which runs off the side of the frame, where one edge of it
+     genuinely is the edge of the picture.
+
+     It answers nothing rather than answer badly. A white page on a white
+     table has no edges to find, and a shape whose edges are not really there
+     is refused and says so, leaving whatever was already placed exactly where
+     it was. */
+  var AUTO_LONG = 400;   /* the longest side the search runs at */
+  var AUTO_BORD = 0.40;  /* what an edge lying on the photo's own side is worth */
+  var AUTO_MIN  = 0.55;  /* below this the four edges are not really there */
+  var autoOn = false, autoPrev = null, autoTimer = 0;
+
+  /* A wide blur, twice — and wide is the whole point of it. A light one
+     leaves the print on a page standing, and a page of text is row upon row of
+     long, straight, strong edges: exactly what the vote is hunting for. At
+     four hundred pixels across, the lines of a paragraph outvoted the page
+     they were printed on and the search came back with a shape somewhere
+     inside the text block. Blurred this far a paragraph is flat grey, while
+     the page's own edge — a step between two large plain areas — is merely
+     softened, and a softened step still peaks in the same place. Two passes of
+     a box are near enough a Gaussian, and running sums make a pass cost the
+     same whatever width it is asked for. */
+  function autoBlur(g, w, h, r){
+    var t = new Float32Array(w * h), d = 2 * r + 1, i, j, s;
+    for (j = 0; j < h; j++){
+      s = 0;
+      for (i = -r; i <= r; i++) s += g[j*w + Math.max(0, Math.min(w-1, i))];
+      for (i = 0; i < w; i++){
+        t[j*w+i] = s / d;
+        s += g[j*w + Math.min(w-1, i+r+1)] - g[j*w + Math.max(0, i-r)];
+      }
+    }
+    for (i = 0; i < w; i++){
+      s = 0;
+      for (j = -r; j <= r; j++) s += t[Math.max(0, Math.min(h-1, j))*w + i];
+      for (j = 0; j < h; j++){
+        g[j*w+i] = s / d;
+        s += t[Math.min(h-1, j+r+1)*w + i] - t[Math.max(0, j-r)*w + i];
+      }
+    }
+  }
+
+  /* the photo, small and grey, with the strength and the direction of its
+     change at every pixel — the whole of what the search ever reads */
+  function autoEdges(){
+    var k = Math.min(1, AUTO_LONG / Math.max(bw0, bh0));
+    var w = Math.max(16, Math.round(bw0 * k)), h = Math.max(16, Math.round(bh0 * k));
+    var c = canvasOf(w, h), d = null, i, j, p;
+    try {
+      var x = c.getContext("2d");
+      /* the size is stated on both ends, the way every draw in this file
+         states it: a photo carrying an orientation tag can arrive with its
+         sides the other way round to the ones dimsOf measured */
+      x.drawImage(cBmp, 0, 0, bw0, bh0, 0, 0, w, h);
+      d = x.getImageData(0, 0, w, h).data;
+    } catch (e){ kill(c); return null; }
+    kill(c);
+
+    var n = w * h, g = new Float32Array(n);
+    for (i = 0; i < n; i++){
+      p = i * 4;
+      g[i] = (d[p] * 0.299 + d[p+1] * 0.587 + d[p+2] * 0.114) / 255;
+    }
+    var r = Math.max(1, Math.round(Math.max(w, h) / 130));
+    autoBlur(g, w, h, r); autoBlur(g, w, h, r);
+
+    var gx = new Float32Array(n), gy = new Float32Array(n), mg = new Float32Array(n);
+    var mx = 0, sx, sy, m;
+    for (j = 1; j < h-1; j++) for (i = 1; i < w-1; i++){
+      p = j*w + i;
+      sx = (g[p-w+1] + 2*g[p+1] + g[p+w+1]) - (g[p-w-1] + 2*g[p-1] + g[p+w-1]);
+      sy = (g[p+w-1] + 2*g[p+w] + g[p+w+1]) - (g[p-w-1] + 2*g[p-w] + g[p-w+1]);
+      gx[p] = sx; gy[p] = sy;
+      m = Math.sqrt(sx*sx + sy*sy);
+      mg[p] = m;
+      if (m > mx) mx = m;
+    }
+    return { w: w, h: h, gx: gx, gy: gy, mg: mg, max: mx };
+  }
+
+  /* what counts as an edge in this particular photo. A flat number cannot: a
+     page on a dark table changes far harder than a page on a light one, and
+     the same figure would find everything in the first and nothing in the
+     second. So a quarter of the change is taken, whatever it measures — a
+     quarter and not the eighth it started at, because the print on a page
+     changes harder than the page's own edge against a pale table, and an
+     eighth of it was all print and no page. */
+  function autoThresh(E){
+    var H = new Int32Array(64), n = E.w * E.h, i, v, acc = 0, b = 63;
+    if (!E.max) return 1;
+    for (i = 0; i < n; i++){
+      v = Math.floor(E.mg[i] / E.max * 63);
+      H[v < 0 ? 0 : (v > 63 ? 63 : v)]++;
+    }
+    for (i = 63; i >= 0; i--){ acc += H[i]; if (acc >= n * 0.25){ b = i; break; } }
+    return Math.max(E.max * 0.04, (b / 63) * E.max);
+  }
+
+  /* every lit pixel votes for the line through it that runs across its own
+     change, and the peaks of that vote are the candidate lines. Angle in whole
+     degrees, distance in twos — fatter bins gather a real edge into one peak
+     instead of scattering it over four. */
+  function autoLines(E, th){
+    var TH = 180, w = E.w, h = E.h, cs = new Float32Array(TH), sn = new Float32Array(TH);
+    var i, j, t, p, m, dt, tt, ri, v;
+    for (t = 0; t < TH; t++){
+      cs[t] = Math.cos(t * Math.PI / 180);
+      sn[t] = Math.sin(t * Math.PI / 180);
+    }
+    var RS = 2, R = Math.ceil(Math.sqrt(w*w + h*h) / RS) * 2 + 3, R0 = (R - 1) / 2;
+    var A = new Float32Array(TH * R);
+    for (j = 1; j < h-1; j++) for (i = 1; i < w-1; i++){
+      p = j*w + i; m = E.mg[p];
+      if (m < th) continue;
+      t = Math.round(Math.atan2(E.gy[p], E.gx[p]) * 180 / Math.PI);
+      /* a vote either side of the direction read, since a real edge is never
+         exactly on a whole degree. Past a half turn the line is the same one
+         read the other way, and its distance simply comes out negative — which
+         the arithmetic does on its own, so the wrap needs no correcting. */
+      for (dt = -2; dt <= 2; dt++){
+        tt = (((t + dt) % TH) + TH) % TH;
+        ri = Math.round((i * cs[tt] + j * sn[tt]) / RS) + R0;
+        if (ri >= 0 && ri < R) A[tt * R + ri] += m;
+      }
+    }
+    var mx = 0, k;
+    for (k = 0; k < A.length; k++) if (A[k] > mx) mx = A[k];
+    if (!mx) return [];
+    /* Only the strongest of a cluster is kept, or one edge comes back as eight
+       lines a hair apart and nothing else gets a look in. Taken strongest
+       first, each held against the handful already kept rather than against
+       the whole of its own neighbourhood: asking every cell to out-vote its
+       seventy-seven neighbours read most of the accumulator seventy-seven
+       times, and on a photograph with no strong edge in it — where most cells
+       clear the floor — that alone was four hundred milliseconds. */
+    var cand = [], floor = mx * 0.20, keep, dtt, drr;
+    for (t = 0; t < TH; t++) for (ri = 0; ri < R; ri++)
+      if (A[t*R + ri] >= floor) cand.push({ t: t, i: ri, v: A[t*R + ri] });
+    cand.sort(function(a, z){ return z.v - a.v; });
+    var out = [];
+    for (k = 0; k < cand.length && out.length < 22; k++){
+      keep = true;
+      for (j = 0; j < out.length; j++){
+        dt = Math.abs(cand[k].t - out[j].t);
+        dtt = dt > 90 ? 180 - dt : dt;
+        /* past a half turn the same line is read the other way round and its
+           distance comes back negated, so its bin is the mirror of this one */
+        drr = dt > 90 ? Math.abs(cand[k].i + out[j].i - (R - 1))
+                      : Math.abs(cand[k].i - out[j].i);
+        if (dtt <= 3 && drr <= 5){ keep = false; break; }
+      }
+      if (keep) out.push(cand[k]);
+    }
+    for (k = 0; k < out.length; k++)
+      out[k] = { t: out[k].t, r: (out[k].i - R0) * RS,
+                 c: cs[out[k].t], s: sn[out[k].t], v: out[k].v, b: false };
+    return out;
+  }
+
+  function autoCross(a, b){
+    var den = a.c * b.s - a.s * b.c;
+    if (Math.abs(den) < 1e-9) return null;
+    return { x: (a.r * b.s - b.r * a.s) / den, y: (a.c * b.r - b.c * a.r) / den };
+  }
+
+  /* how far apart two lines point, folded into a quarter turn */
+  function autoAng(a, b){
+    var d = Math.abs(a.t - b.t) % 180;
+    return d > 90 ? 180 - d : d;
+  }
+
+  function autoArea(q){
+    var s = 0, i, a, b;
+    for (i = 0; i < 4; i++){ a = i*2; b = ((i+1)%4)*2; s += q[a]*q[b+1] - q[b]*q[a+1]; }
+    return Math.abs(s) / 2;
+  }
+
+  /* how much of an edge is really there: the share of points along it sitting
+     on strong change that runs the right way across it. A line placed by a
+     vote can lie a pixel or two off the edge it came from, so a narrow band
+     either side of it counts as on it. */
+  function autoBack(E, th, x0, y0, x1, y1){
+    var N = 32, hit = 0, i, t, x, y, p, d, xx, yy, best, dot;
+    var ex = x1 - x0, ey = y1 - y0, L = Math.sqrt(ex*ex + ey*ey);
+    if (L < 8) return 0;
+    var nx = -ey / L, ny = ex / L;
+    for (i = 0; i <= N; i++){
+      t = i / N;
+      x = x0 + ex * t; y = y0 + ey * t;
+      best = 0;
+      for (d = -2; d <= 2; d++){
+        xx = Math.round(x + nx * d); yy = Math.round(y + ny * d);
+        if (xx < 1 || yy < 1 || xx >= E.w - 1 || yy >= E.h - 1) continue;
+        p = yy * E.w + xx;
+        if (E.mg[p] < th) continue;
+        dot = Math.abs(E.gx[p] * nx + E.gy[p] * ny) / E.mg[p];
+        if (dot > best) best = dot;
+      }
+      if (best > 0.85) hit++;
+    }
+    return hit / (N + 1);
+  }
+
+  /* the four crossings of two pairs of lines, walked round in a ring: along
+     the first of one pair, across the far one of the other, back along the
+     second, and home. Null where a crossing is missing, wildly off the photo,
+     or where the four have crossed over — a folded shape has no straightening
+     in it, the same objection a dragged corner gets. */
+  function autoCorners(a, b, E){
+    var c = [autoCross(a[0], b[0]), autoCross(a[0], b[1]),
+             autoCross(a[1], b[1]), autoCross(a[1], b[0])];
+    var mx = E.w * 0.06, my = E.h * 0.06, q = [], i, p, u, v, z, cr, sgn = 0;
+    for (i = 0; i < 4; i++){
+      p = c[i];
+      if (!p || p.x !== p.x || p.y !== p.y) return null;
+      if (p.x < -mx || p.y < -my || p.x > E.w + mx || p.y > E.h + my) return null;
+      q.push(Math.max(0, Math.min(E.w, p.x)), Math.max(0, Math.min(E.h, p.y)));
+    }
+    for (i = 0; i < 4; i++){
+      u = i*2; v = ((i+1)%4)*2; z = ((i+2)%4)*2;
+      cr = (q[v]-q[u])*(q[z+1]-q[v+1]) - (q[v+1]-q[u+1])*(q[z]-q[v]);
+      if (!cr) return null;
+      if (!sgn) sgn = cr > 0 ? 1 : -1;
+      else if ((cr > 0 ? 1 : -1) !== sgn) return null;
+    }
+    return q;
+  }
+
+  /* the shape put to the photo: are these four edges actually there? An edge
+     lying on the photo's own side is worth a flat little, so three real edges
+     carry a fourth that runs off the frame, while four of them together never
+     reach the mark. One edge nobody can see at all sinks the whole shape,
+     however good the other three are. */
+  function autoScore(E, th, q, a, b){
+    var ln = [a[0], b[1], a[1], b[0]], sum = 0, i, u, v, s;
+    var af = autoArea(q) / (E.w * E.h);
+    if (af < 0.10 || af > 1.02) return null;
+    for (i = 0; i < 4; i++){
+      u = i*2; v = ((i+1)%4)*2;
+      s = ln[i].b ? AUTO_BORD : autoBack(E, th, q[u], q[u+1], q[v], q[v+1]);
+      if (s < 0.18) return null;
+      sum += s;
+      /* the edges are asked one at a time and the hopeless are dropped where
+         they stand: most of what this loop is handed is junk, and reading all
+         four edges of every one of it is most of what the search costs */
+      if (sum + (3 - i) < 4 * AUTO_MIN) return null;
+    }
+    return { m: sum / 4, s: (sum / 4) * (0.55 + 0.45 * Math.min(1, af)) };
+  }
+
+  /* the search itself, and what comes back is already in the photo's own
+     pixels — which is what keeps the four points on the page through a
+     rotation, a flip or a tilt, since none of those was ever part of them */
+  function autoPick(E){
+    var th = autoThresh(E), L = autoLines(E, th), i, j, m, q, sc;
+    var v0 = L.length ? L[0].v * 0.5 : 1, W = E.w - 1, H = E.h - 1;
+    L.push({ t:0,  r:0, c:1, s:0, v:v0, b:true }, { t:0,  r:W, c:1, s:0, v:v0, b:true },
+           { t:90, r:0, c:0, s:1, v:v0, b:true }, { t:90, r:H, c:0, s:1, v:v0, b:true });
+
+    /* two lines make a pair when they point roughly the same way and meet — if
+       they meet at all — far outside the picture. Opposite edges of a page do
+       converge, and where they converge is exactly what tells a pair of page
+       edges from two lines that happen to cross inside the frame. */
+    var P = [];
+    for (i = 0; i < L.length; i++) for (j = i + 1; j < L.length; j++){
+      if (autoAng(L[i], L[j]) > 40) continue;
+      m = autoCross(L[i], L[j]);
+      if (m && m.x > -E.w && m.x < E.w * 2 && m.y > -E.h && m.y < E.h * 2) continue;
+      P.push([L[i], L[j], L[i].v + L[j].v]);
+    }
+    /* the strongest forty pairs and no more. Every one of them is tried
+       against every other, so the cost of this goes up with the square of it
+       — and on a photograph with a great many lines in it, sixty pairs was
+       half a second where forty is a fifth of one, with no shape found any
+       less well. */
+    P.sort(function(a, z){ return z[2] - a[2]; });
+    P = P.slice(0, 40);
+
+    var best = null, bs = 0;
+    for (i = 0; i < P.length; i++) for (j = 0; j < P.length; j++){
+      if (i === j) continue;
+      /* the two pairs have to lie across one another, or the shape is a sliver */
+      if (autoAng(P[i][0], P[j][0]) < 40) continue;
+      q = autoCorners(P[i], P[j], E);
+      if (!q) continue;
+      sc = autoScore(E, th, q, P[i], P[j]);
+      if (sc && sc.s > bs){ bs = sc.s; best = { q: q, m: sc.m }; }
+    }
+    if (!best || best.m < AUTO_MIN) return null;
+
+    return best.q;
+  }
+
+  /* and the same shape carried out of the small copy into the photo's own
+     pixels, which is where the four points live */
+  function autoQuad(){
+    var E = autoEdges();
+    if (!E) return null;
+    var q = autoPick(E);
+    if (!q) return null;
+    var kx = bw0 / E.w, ky = bh0 / E.h, out = [], i;
+    for (i = 0; i < 4; i++)
+      out.push(Math.max(0, Math.min(bw0, q[i*2] * kx)),
+               Math.max(0, Math.min(bh0, q[i*2+1] * ky)));
+    return out;
+  }
+
+  /* the four put in the order the rectangle's own corners are in — top-left,
+     top-right, bottom-right, bottom-left — and read in the view the user is
+     actually looking at, so a photo shown flipped hands its shape over exactly
+     the way a hand-placed one does. */
+  function autoOrder(s){
+    var M = qFwd(bw0, bh0, cRot, cFH, cFV, cFree), v = [], i, p, cx = 0, cy = 0;
+    for (i = 0; i < 4; i++){
+      p = mAt(M, s[i*2], s[i*2+1]);
+      v.push(p); cx += p.x / 4; cy += p.y / 4;
+    }
+    var k = [0,1,2,3];
+    k.sort(function(a, z){
+      return Math.atan2(v[a].y - cy, v[a].x - cx) - Math.atan2(v[z].y - cy, v[z].x - cx);
+    });
+    var st = 0, lo = Infinity, d, out = [], n;
+    for (i = 0; i < 4; i++){
+      d = v[k[i]].x + v[k[i]].y;
+      if (d < lo){ lo = d; st = i; }
+    }
+    for (i = 0; i < 4; i++){ n = k[(st + i) % 4]; out.push(s[n*2], s[n*2+1]); }
+    return out;
+  }
+
+  function autoFind(){
+    if (!cBmp) return null;
+    var q = null;
+    try { q = autoQuad(); } catch (e){ q = null; }
+    if (!q) return null;
+    q = autoOrder(q);
+    return quadOK(q) ? q : null;
+  }
+
+  /* the figure under the photo says a word for a moment instead. layoutFrame
+     and layoutQuad hold their tongue while it does, or the next repaint wipes
+     it before it has been read. */
+  function autoSay(k){
+    if (autoTimer) clearTimeout(autoTimer);
+    cropSize.textContent = t(k);
+    cropSize.classList.add("say");
+    autoTimer = setTimeout(function(){
+      autoTimer = 0;
+      cropSize.classList.remove("say");
+      if (qOn) layoutQuad(); else layoutFrame();
+    }, 1900);
+  }
+
+  function autoHush(){
+    if (!autoTimer) return;
+    clearTimeout(autoTimer); autoTimer = 0;
+    cropSize.classList.remove("say");
+  }
+
+  /* Auto's undo is spent the moment the shape becomes the user's own. A pull
+     of a handle, a return to Normal, Reset, or another photo: from any of
+     those there is nothing of the app's left to put back, so the button lets
+     go rather than offering to undo work it did not do. */
+  function autoDrop(){
+    autoHush();
+    autoPrev = null;
+    if (!autoOn) return;
+    autoOn = false;
+    $("autoBtn").setAttribute("aria-pressed", "false");
+  }
+
+  /* Auto places the four points and nothing else: a bend or a corner the shape
+     was carrying is put back flat, so what comes back is a clean four-cornered
+     reading of the page and Curve is a fresh sheet to bend. Pressing it again
+     puts all of it back the way it was — the shape, its bend, and which of the
+     three was in front. */
+  $("autoBtn").addEventListener("click", function(){
+    if (autoOn){
+      var p = autoPrev;
+      autoDrop();
+      if (p){
+        cQuad = p.q ? p.q.slice(0) : null;
+        cWarp = p.w ? p.w.slice(0) : null;
+        cKink = p.k ? p.k.slice(0) : null;
+        cSpots = p.s ? p.s.slice(0) : null;
+        qOwn = p.own;
+        quadOn(p.on, p.curve);
+      }
+      if (qOn) layoutQuad(); else layoutFrame();
+      return;
+    }
+    var q = autoFind();
+    if (!q){ autoSay("autoNone"); return; }
+    autoPrev = { q: cQuad ? cQuad.slice(0) : null, w: cWarp ? cWarp.slice(0) : null,
+                 k: cKink ? cKink.slice(0) : null, s: cSpots ? cSpots.slice(0) : null,
+                 own: qOwn, on: qOn, curve: qCurve };
+    autoHush();
+    cQuad = q; qOwn = true;
+    cWarp = bendZero(); cKink = [0,0,0,0,0,0,0,0]; cSpots = spotsZero();
+    autoOn = true;
+    this.setAttribute("aria-pressed", "true");
+    quadOn(true, qCurve);
   });
 
   // ===== PDF IN — start · everything between these markers is deletable =====
